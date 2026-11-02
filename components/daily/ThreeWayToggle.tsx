@@ -46,13 +46,11 @@ export function ThreeWayToggle({
   size?: "sm" | "md";
 }) {
   // grid-cols-3 keeps Check / Missed / Exempt the same width regardless of
-  // label length, so Exempt no longer looks wider than the others.
-  // Phones get full 44px targets: labels are hidden below md, so the buttons
-  // would otherwise be ~22px wide — far under any touch-target minimum, which
-  // is what made rapid taps land on the neighbor or in the gaps ("nothing
-  // happens / the wrong button triggers"). md+ keeps the compact labelled
-  // sizing. select-none stops rapid tapping from kicking off text selection.
-  const sizing = size === "sm" ? "text-xs md:h-7" : "text-sm md:h-8";
+  // label length, so Exempt no longer looks wider than the others. Compact
+  // sizing (the 44px-target version was tried and felt too big); rapid-tap
+  // reliability comes from the global touch-action: manipulation, and
+  // select-none keeps fast tapping from kicking off text selection.
+  const sizing = size === "sm" ? "h-7 text-xs" : "h-8 text-sm";
 
   return (
     <div
@@ -71,12 +69,12 @@ export function ThreeWayToggle({
             // Clicking the already-active status clears it back to "no data".
             onClick={() => onChange(isActive ? null : v)}
             className={cn(
-              "col-span-1 inline-flex h-11 min-w-11 items-center justify-center gap-1 rounded-md px-1 font-medium transition-colors md:min-w-0",
+              "col-span-1 inline-flex items-center justify-center gap-1 rounded-md px-1 font-medium transition-colors",
               sizing,
               isActive ? active : cn("bg-transparent", idle),
             )}
           >
-            <Icon className="h-4 w-4 shrink-0 md:h-3.5 md:w-3.5" />
+            <Icon className="h-3.5 w-3.5 shrink-0" />
             <span className="hidden md:inline">{label}</span>
           </button>
         );

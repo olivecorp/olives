@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { CloudOff, Plus } from "lucide-react";
@@ -52,6 +52,25 @@ export function NotesClient() {
     });
   }
 
+  // Open/close a note and mirror it into the URL (?id=): the navbar's back
+  // arrow keys off it, alongside the calendar's deep links. replaceState (not
+  // push) keeps history clean — device back still leaves Notes as a whole.
+  function selectNote(id: string | null) {
+    setSelectedId(id);
+    window.history.replaceState(
+      null,
+      "",
+      id ? `/notes?id=${encodeURIComponent(id)}` : "/notes",
+    );
+  }
+
+  // Router-driven URL changes (the navbar back arrow navigates to /notes)
+  // follow the URL. Internal opens use replaceState, so this only fires when
+  // the router actually moved — and even then it's usually a no-op sync.
+  useEffect(() => {
+    setSelectedId(paramId ?? null);
+  }, [paramId]);
+
   // New note goes into the selected folder (or Unfiled), which expands so
   // the note is visible in the tree when the editor closes.
   async function addNote() {
@@ -63,7 +82,7 @@ export function NotesClient() {
       return next;
     });
     const id = await createNote(userId, target);
-    if (id) setSelectedId(id);
+    if (id) selectNote(id);
   }
 
   const tree = useMemo(() => buildFolderTree(folders ?? []), [folders]);
@@ -108,7 +127,7 @@ export function NotesClient() {
               collapsed={collapsed}
               onToggleCollapsed={toggleCollapsed}
               selectedNoteId={selectedId}
-              onOpenNote={setSelectedId}
+              onOpenNote={selectNote}
             />
           </div>
 
@@ -118,8 +137,8 @@ export function NotesClient() {
                 key={selected.id}
                 note={selected}
                 folderOptions={tree.order}
-                onBack={() => setSelectedId(null)}
-                onOpenNote={setSelectedId}
+                onBack={() => selectNote(null)}
+                onOpenNote={selectNote}
               />
             ) : (
               <p className="pt-16 text-center text-sm text-[var(--muted)]">

@@ -1,8 +1,9 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Settings } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 import { SyncStatus } from "@/components/SyncStatus";
@@ -21,6 +22,26 @@ const LINKS: { href: string; label: string; aria: string; sepBefore?: boolean }[
   { href: "/notes", label: "N", aria: "Notes" },
   { href: "/settings", label: "⚙", aria: "Settings" },
 ];
+
+/** Back arrow shown while a single note is open — the notes page mirrors the
+ *  open note into ?id=, and this sits with the section letters as the note
+ *  editor's back button (the in-editor one was removed). Suspense-wrapped
+ *  because useSearchParams can't run during static prerender. */
+function NotesBackLink() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  if (pathname !== "/notes" || !searchParams.get("id")) return null;
+  return (
+    <Link
+      href="/notes"
+      title="Back to notes"
+      aria-label="Back to notes"
+      className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--border)] text-[var(--muted)] transition-colors hover:bg-black/5 hover:text-[var(--foreground)]"
+    >
+      <ArrowLeft className="h-4 w-4" />
+    </Link>
+  );
+}
 
 export function Navbar() {
   const pathname = usePathname();
@@ -49,6 +70,9 @@ export function Navbar() {
         </Link>
 
         <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+          <Suspense fallback={null}>
+            <NotesBackLink />
+          </Suspense>
           {LINKS.map((l) => {
             const active = pathname === l.href || pathname.startsWith(l.href + "/");
             return (

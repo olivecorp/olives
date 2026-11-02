@@ -155,7 +155,7 @@ export function FolderSidebar({
     return (
       <div key={f.id}>
         <div
-          className="group flex items-center gap-0.5"
+          className="group relative flex items-center gap-0.5"
           style={{ paddingLeft: depth * 14 }}
         >
           <button
@@ -212,13 +212,18 @@ export function FolderSidebar({
             >
               <Folder className="h-3.5 w-3.5 shrink-0" />
               <span className="min-w-0 truncate">{f.name || "(folder)"}</span>
-              <span className="ml-auto text-xs tabular-nums">
+              <span className="ml-auto text-xs tabular-nums transition-opacity group-hover:opacity-0">
                 {totals.get(f.id) ?? 0}
               </span>
             </button>
           )}
 
-          <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
+          {/* Floated over the row's right edge, out of flow: occupying inline
+              space here reserved ~60px at the end of every folder row, so
+              folder counts lined up left of Unfiled's (which has no actions).
+              The count fades out on hover to make room. */}
+          {!renaming && (
+          <span className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center rounded-md bg-[var(--card)] pl-1 shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
             <button
               onClick={() => {
                 setRenamingId(f.id);
@@ -254,6 +259,7 @@ export function FolderSidebar({
               <Trash2 className="h-3 w-3" />
             </button>
           </span>
+          )}
         </div>
 
         {addingAt === f.id && (
