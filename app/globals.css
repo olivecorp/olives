@@ -199,8 +199,20 @@ textarea {
 .prose-note .tbl-grip:active {
   cursor: grabbing;
 }
-.prose-note table:hover .tbl-grip {
-  opacity: 1;
+/* Grips and the column-resize bar are mouse-only affordances (HTML5 drag
+   and col-resize never fire on touch), and touch browsers set sticky
+   :hover — a scroll across a table lit the grips up and they stayed on
+   screen after the scroll stopped. Reveal them on real-pointer devices
+   only; touch reorders rows/columns via the Table menu instead. */
+@media (hover: hover) {
+  .prose-note table:hover .tbl-grip {
+    opacity: 1;
+  }
+}
+@media (hover: none) {
+  .prose-note .column-resize-handle {
+    display: none;
+  }
 }
 .prose-note .tbl-grip-row {
   left: -1.35em;

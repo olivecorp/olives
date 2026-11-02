@@ -3,44 +3,73 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, LogOut, Settings } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  ClipboardCheck,
+  ListChecks,
+  LogOut,
+  NotebookText,
+  Settings,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 import { SyncStatus } from "@/components/SyncStatus";
 import { resetCoordinator } from "@/lib/swr-mutations";
 import { resetLocalData } from "@/lib/local/reset";
 
-// Single-letter labels keep the bar compact on phones; the full name shows
-// on hover/long-press via title, and screen readers use aria-label. Calendar
-// is the app's home (/ redirects there); Daily is the daily-tracker section.
-// Week/Month/Year live in the tracker sidebar (see
-// components/summary/SummarySidebar) — this bar switches sections only.
-const LINKS: { href: string; label: string; aria: string; sepBefore?: boolean }[] = [
-  { href: "/daily", label: "D", aria: "Daily" },
-  { href: "/todos", label: "T", aria: "Todos", sepBefore: true },
-  { href: "/calendar", label: "C", aria: "Calendar" },
-  { href: "/notes", label: "N", aria: "Notes" },
-  { href: "/settings", label: "⚙", aria: "Settings" },
+// Icon tabs (names travel via title/aria-label). Calendar is the app's home
+// (/ redirects there); Daily — the daily tracker — sits behind a divider
+// after the main three (it's a different mode of the app, and Week/Month/
+// Year live in its sidebar, see components/summary/SummarySidebar).
+const LINKS: {
+  href: string;
+  aria: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  sepBefore?: boolean;
+}[] = [
+  { href: "/calendar", aria: "Calendar", Icon: Calendar },
+  { href: "/todos", aria: "Todos", Icon: ListChecks },
+  { href: "/notes", aria: "Notes", Icon: NotebookText },
+  { href: "/daily", aria: "Daily", Icon: ClipboardCheck, sepBefore: true },
+  { href: "/settings", aria: "Settings", Icon: Settings },
 ];
 
-/** Back arrow shown while a single note is open — the notes page mirrors the
- *  open note into ?id=, and this sits with the section letters as the note
- *  editor's back button (the in-editor one was removed). Suspense-wrapped
- *  because useSearchParams can't run during static prerender. */
-function NotesBackLink() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  if (pathname !== "/notes" || !searchParams.get("id")) return null;
+/** The olive logo, linked home. Also the Suspense fallback for NavbarBrand
+ *  (what renders during prerender, before search params exist). */
+function BrandLogo() {
   return (
     <Link
-      href="/notes"
-      title="Back to notes"
-      aria-label="Back to notes"
-      className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--border)] text-[var(--muted)] transition-colors hover:bg-black/5 hover:text-[var(--foreground)]"
+      href="/calendar"
+      className="mr-2 flex items-center gap-2 font-semibold tracking-tight"
     >
-      <ArrowLeft className="h-4 w-4" />
+      <Logo className="h-8 w-8" />
+      <span className="hidden sm:inline">Olives</span>
     </Link>
   );
+}
+
+/** Brand slot: normally the logo, but while a single note is open (the notes
+ *  page mirrors it into ?id=) the back arrow takes its place in the same
+ *  32px footprint — swapping in the logo's slot, not inserting beside it, so
+ *  the section tabs never shift when a note opens or closes. Suspense-
+ *  wrapped because useSearchParams can't run during static prerender. */
+function NavbarBrand() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  if (pathname === "/notes" && searchParams.get("id")) {
+    return (
+      <Link
+        href="/notes"
+        title="Back to notes"
+        aria-label="Back to notes"
+        className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-black/5 hover:text-[var(--foreground)]"
+      >
+        <ArrowLeft className="h-5 w-5" />
+      </Link>
+    );
+  }
+  return <BrandLogo />;
 }
 
 export function Navbar() {
@@ -61,18 +90,11 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--card)]/85 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-1 px-4">
-        <Link
-          href="/calendar"
-          className="mr-2 flex items-center gap-2 font-semibold tracking-tight"
-        >
-          <Logo className="h-8 w-8" />
-          <span className="hidden sm:inline">Olives</span>
-        </Link>
+        <Suspense fallback={<BrandLogo />}>
+          <NavbarBrand />
+        </Suspense>
 
         <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
-          <Suspense fallback={null}>
-            <NotesBackLink />
-          </Suspense>
           {LINKS.map((l) => {
             const active = pathname === l.href || pathname.startsWith(l.href + "/");
             return (
@@ -91,11 +113,7 @@ export function Navbar() {
                     : "text-[var(--muted)] hover:bg-black/5 hover:text-[var(--foreground)]",
                 )}
               >
-                {l.href === "/settings" ? (
-                  <Settings className="h-4.5 w-4.5" />
-                ) : (
-                  l.label
-                )}
+                <l.Icon className="h-4.5 w-4.5" />
                 </Link>
               </span>
             );

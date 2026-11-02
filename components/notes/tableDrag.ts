@@ -17,7 +17,8 @@ import {
  * moveTableRow / moveTableColumn commands (merged cells handled there).
  *
  * Grips are styled in globals.css (.tbl-grip): invisible until the table
- * is hovered, rendered into the .tableWrapper padding so overflow-x
+ * is hovered with a mouse (touch devices keep them hidden — see the
+ * comment there), rendered into the .tableWrapper padding so overflow-x
  * doesn't clip them.
  */
 

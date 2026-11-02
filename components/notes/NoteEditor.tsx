@@ -164,16 +164,20 @@ export function NoteEditor({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
+      {/* Title owns the first line outright; the icon toggles sit below it.
+          Sharing one flex-wrap row left the phone layout wrapping between
+          arbitrary buttons depending on title length. */}
+      <input
+        value={title}
+        onChange={(e) => {
+          setTitle(e.target.value);
+          queuePatch({ title: e.target.value });
+        }}
+        placeholder="Title"
+        className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm font-semibold outline-none focus:border-[var(--color-check)]"
+      />
+
       <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            queuePatch({ title: e.target.value });
-          }}
-          placeholder="Title"
-          className="h-9 min-w-[8rem] flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm font-semibold outline-none focus:border-[var(--color-check)]"
-        />
         <FolderPicker
           value={note.folderId}
           options={folderOptions}
@@ -213,6 +217,32 @@ export function NoteEditor({
             className="sr-only"
           />
         </label>
+        <div
+          role="group"
+          aria-label="Font size"
+          title="Font size"
+          className="ml-auto flex rounded-lg border border-[var(--border)] bg-[var(--card)] p-0.5"
+        >
+          {FONT_SIZES.map((f, i) => (
+            <button
+              key={f.key}
+              onClick={() => chooseFont(f.key)}
+              title={f.label}
+              aria-label={f.label}
+              className={cn(
+                "rounded-md px-2 py-1 font-semibold transition-colors",
+                i === 0 && "text-xs",
+                i === 1 && "text-sm",
+                i === 2 && "text-base",
+                font === f.key
+                  ? "bg-[var(--color-check-soft)] text-[var(--color-check)]"
+                  : "text-[var(--muted)] hover:bg-black/5",
+              )}
+            >
+              A
+            </button>
+          ))}
+        </div>
         <button
           onClick={async () => {
             // Flush the debounce first so the copy includes the latest edits.
@@ -239,35 +269,7 @@ export function NoteEditor({
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {editingText && <EditorToolbar editor={editor} />}
-        <div
-          role="group"
-          aria-label="Font size"
-          title="Font size"
-          className="flex rounded-lg border border-[var(--border)] bg-[var(--card)] p-0.5"
-        >
-          {FONT_SIZES.map((f, i) => (
-            <button
-              key={f.key}
-              onClick={() => chooseFont(f.key)}
-              title={f.label}
-              aria-label={f.label}
-              className={cn(
-                "rounded-md px-2 py-1 font-semibold transition-colors",
-                i === 0 && "text-xs",
-                i === 1 && "text-sm",
-                i === 2 && "text-base",
-                font === f.key
-                  ? "bg-[var(--color-check-soft)] text-[var(--color-check)]"
-                  : "text-[var(--muted)] hover:bg-black/5",
-              )}
-            >
-              A
-            </button>
-          ))}
-        </div>
-      </div>
+      {editingText && <EditorToolbar editor={editor} />}
 
       <div
         className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3"
@@ -334,7 +336,9 @@ function FolderPicker({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 flex max-h-64 w-56 flex-col overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg"
+          // left-0: the folder button is the leftmost control on its row, so
+          // a right-anchored menu hung off the phone screen's left edge.
+          className="absolute left-0 top-full z-20 mt-1 flex max-h-64 w-56 flex-col overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg"
         >
           <FolderRow
             label="No folder"
