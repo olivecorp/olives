@@ -34,11 +34,20 @@ export interface PushPayload {
   body: string;
 }
 
+/** Per-send overrides: `tag` controls on-device replacement (notifications
+ * sharing a tag replace each other; distinct tags stack) and `url` is where
+ * the notification click lands. */
+export interface SendOptions {
+  tag?: string;
+  url?: string;
+}
+
 /** Send to every subscription of the user; prune dead endpoints (404/410).
  * Returns how many sends succeeded (0 when the user has no subscriptions). */
 export async function sendToUser(
   userId: string,
   payload: PushPayload,
+  options?: SendOptions,
 ): Promise<number> {
   ensureVapid();
   const subs = await getPushSubscriptions(userId);
@@ -48,7 +57,11 @@ export async function sendToUser(
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify({ ...payload, tag: "olives", url: "/daily" }),
+          JSON.stringify({
+            ...payload,
+            tag: options?.tag ?? "olives",
+            url: options?.url ?? "/daily",
+          }),
           // Stale pushes expire instead of buzzing hours later when a phone
           // reconnects.
           { TTL: 1800 },

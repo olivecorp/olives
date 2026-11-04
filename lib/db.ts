@@ -312,13 +312,18 @@ export const DEFAULT_SETTINGS: UserSettings = {
   notify_11: false,
   notify_17: false,
   notify_21: false,
+  remind_todos: false,
+  remind_events: false,
+  remind_offset_min: 10,
+  remind_day_min: 540,
   timezone: null,
 };
 
 export async function getUserSettings(userId: string): Promise<UserSettings> {
   const { data, error } = await admin()
     .from("user_settings")
-    .select("user_id, notify_11, notify_17, notify_21, timezone")
+    // One literal string — supabase-js types the row shape from it.
+    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_min, timezone")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
@@ -327,6 +332,10 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
     notify_11: data.notify_11,
     notify_17: data.notify_17,
     notify_21: data.notify_21,
+    remind_todos: data.remind_todos ?? false,
+    remind_events: data.remind_events ?? false,
+    remind_offset_min: data.remind_offset_min ?? 10,
+    remind_day_min: data.remind_day_min ?? 540,
     timezone: data.timezone ?? null,
   };
 }
@@ -344,13 +353,17 @@ export async function updateUserSettings(
   const { data, error } = await admin()
     .from("user_settings")
     .upsert(next, { onConflict: "user_id" })
-    .select("user_id, notify_11, notify_17, notify_21, timezone")
+    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_min, timezone")
     .single();
   if (error) throw error;
   return {
     notify_11: data.notify_11,
     notify_17: data.notify_17,
     notify_21: data.notify_21,
+    remind_todos: data.remind_todos ?? false,
+    remind_events: data.remind_events ?? false,
+    remind_offset_min: data.remind_offset_min ?? 10,
+    remind_day_min: data.remind_day_min ?? 540,
     timezone: data.timezone ?? null,
   };
 }
@@ -361,8 +374,8 @@ export async function getActiveNotificationSettings(): Promise<
 > {
   const { data, error } = await admin()
     .from("user_settings")
-    .select("user_id, notify_11, notify_17, notify_21, timezone")
-    .or("notify_11.eq.true,notify_17.eq.true,notify_21.eq.true")
+    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_min, timezone")
+    .or("notify_11.eq.true,notify_17.eq.true,notify_21.eq.true,remind_todos.eq.true,remind_events.eq.true")
     .not("timezone", "is", null);
   if (error) throw error;
   return (data ?? []).map((s: Record<string, unknown>) => ({
@@ -370,6 +383,10 @@ export async function getActiveNotificationSettings(): Promise<
     notify_11: s.notify_11 as boolean,
     notify_17: s.notify_17 as boolean,
     notify_21: s.notify_21 as boolean,
+    remind_todos: (s.remind_todos as boolean | null) ?? false,
+    remind_events: (s.remind_events as boolean | null) ?? false,
+    remind_offset_min: (s.remind_offset_min as number | null) ?? 10,
+    remind_day_min: (s.remind_day_min as number | null) ?? 540,
     timezone: s.timezone as string,
   }));
 }
@@ -490,6 +507,102 @@ export async function deletePushLogOlderThanDays(days: number): Promise<void> {
     .delete()
     .lt("date", cutoff);
   if (error) throw error;
+}
+
+// --- item reminders (calendar todos/events) ---------------------------------
+// Same claim/mark/release pattern as push_log, keyed by dedupe_key instead of
+// (date, hour) — push_log's CHECK pins hour to the 11/17/21 slots.
+
+/**
+ * Claim an item reminder ("todos@<date>" / "event:<id>@<date>", date in the
+ * user's LOCAL timezone) — insert-on-conflict-do-nothing, returning the row
+ * only for the caller that won the race.
+ */
+export async function claimReminderLog(
+  userId: string,
+  dedupeKey: string,
+  date: string,
+): Promise<string | null> {
+  const { data, error } = await admin()
+    .from("reminder_log")
+    .upsert(
+      { user_id: userId, dedupe_key: dedupeKey, date },
+      { onConflict: "user_id,dedupe_key", ignoreDuplicates: true },
+    )
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+export async function markReminderLogSent(id: string): Promise<void> {
+  const { error } = await admin()
+    .from("reminder_log")
+    .update({ sent_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Delete a claim row so the next scheduler run can retry that reminder. */
+export async function releaseReminderLog(id: string): Promise<void> {
+  const { error } = await admin().from("reminder_log").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteReminderLogOlderThanDays(
+  days: number,
+): Promise<void> {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const { error } = await admin()
+    .from("reminder_log")
+    .delete()
+    .lt("date", cutoff);
+  if (error) throw error;
+}
+
+/** The user's open dated todos for one local date (for the morning summary).
+ * `texts` holds the first 3 by sort order; `count` is the total. */
+export async function getReminderTodos(
+  userId: string,
+  dateISO: string,
+): Promise<{ count: number; texts: string[] }> {
+  const { data, count, error } = await admin()
+    .from("todos")
+    .select("text", { count: "exact" })
+    .eq("user_id", userId)
+    .eq("date", dateISO)
+    .eq("deleted", false)
+    .eq("completed", false)
+    .order("sort_order")
+    .limit(3);
+  if (error) throw error;
+  return { count: count ?? 0, texts: (data ?? []).map((r) => r.text as string) };
+}
+
+/** One reminder-eligible event row (local-first events table, server mirror). */
+export interface ReminderEventRow {
+  id: string;
+  title: string;
+  all_day: boolean;
+  start_min: number | null;
+  location: string | null;
+}
+
+/** The user's events for one local date (deleted rows filtered out). */
+export async function getReminderEvents(
+  userId: string,
+  dateISO: string,
+): Promise<ReminderEventRow[]> {
+  const { data, error } = await admin()
+    .from("events")
+    .select("id, title, all_day, start_min, location")
+    .eq("user_id", userId)
+    .eq("date", dateISO)
+    .eq("deleted", false);
+  if (error) throw error;
+  return (data ?? []) as ReminderEventRow[];
 }
 
 // ---------------------------------------------------------------------------

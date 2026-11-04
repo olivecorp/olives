@@ -1,9 +1,12 @@
 -- ===========================================================================
--- Hourly notification scheduler (run once in the Supabase SQL editor)
+-- Notification scheduler (run once in the Supabase SQL editor)
 --
--- Every hour this pings /api/cron/notify, which checks each user's local time
--- and sends the 11:00 / 17:00 / 21:00 notification to whoever has just passed
--- an enabled slot. The route authenticates with the CRON_SECRET.
+-- Every 5 minutes this pings /api/cron/notify, which checks each user's local
+-- time and sends: the 11:00 / 17:00 / 21:00 check-in to whoever has just
+-- passed an enabled slot (60-minute window, so the finer tick changes
+-- nothing), and item reminders — a morning summary of dated todos and
+-- all-day events, plus a ping before each timed event. The route
+-- authenticates with the CRON_SECRET.
 --
 -- BEFORE RUNNING: replace REPLACE_WITH_CRON_SECRET with the same value as the
 -- CRON_SECRET env var in Vercel (openssl rand -hex 32).
@@ -23,7 +26,7 @@ select cron.unschedule('olives-notify')
 
 select cron.schedule(
   'olives-notify',
-  '0 * * * *',
+  '*/5 * * * *',
   $$
   select net.http_post(
     url      := 'https://olivesapp.vercel.app/api/cron/notify',

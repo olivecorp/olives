@@ -34,10 +34,41 @@ export async function PATCH(req: NextRequest) {
     notify_11?: boolean;
     notify_17?: boolean;
     notify_21?: boolean;
+    remind_todos?: boolean;
+    remind_events?: boolean;
+    remind_offset_min?: number;
+    remind_day_min?: number;
     timezone?: string | null;
   } = {};
-  for (const k of ["notify_11", "notify_17", "notify_21"] as const) {
+  for (const k of [
+    "notify_11",
+    "notify_17",
+    "notify_21",
+    "remind_todos",
+    "remind_events",
+  ] as const) {
     if (typeof body?.[k] === "boolean") patch[k] = body[k];
+  }
+  // Reminder timing — ranges mirror the DB CHECK constraints.
+  if (body?.remind_offset_min !== undefined) {
+    const v = Number(body.remind_offset_min);
+    if (!Number.isInteger(v) || v < 0 || v > 360) {
+      return NextResponse.json(
+        { error: "remind_offset_min must be an integer 0–360." },
+        { status: 400 },
+      );
+    }
+    patch.remind_offset_min = v;
+  }
+  if (body?.remind_day_min !== undefined) {
+    const v = Number(body.remind_day_min);
+    if (!Number.isInteger(v) || v < 0 || v > 1439) {
+      return NextResponse.json(
+        { error: "remind_day_min must be an integer 0–1439." },
+        { status: 400 },
+      );
+    }
+    patch.remind_day_min = v;
   }
   if ("timezone" in (body ?? {})) {
     const tz = body.timezone;

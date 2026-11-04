@@ -36,6 +36,14 @@ export interface UserSettings {
   notify_11: boolean;
   notify_17: boolean;
   notify_21: boolean;
+  /** Morning summary of dated todos (fires at remind_day_min local). */
+  remind_todos: boolean;
+  /** Per-event reminders: minutes before timed starts, morning for all-day. */
+  remind_events: boolean;
+  /** Minutes before a timed event's start (0 = at start). */
+  remind_offset_min: number;
+  /** Morning time for todos + all-day events, minutes from midnight. */
+  remind_day_min: number;
   timezone: string | null; // IANA name, e.g. "America/New_York"
 }
 

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { UserSettings } from "@/lib/types";
+import { Switch } from "./Switch";
 
 const SLOTS = [
   { key: "notify_11" as const, label: "11:00 AM", title: "Midday check-in" },
@@ -47,26 +47,11 @@ export function NotificationSettings({
                 {s.title}
               </span>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={slots[s.key]}
-              aria-label={`${s.label} reminder`}
+            <Switch
+              checked={slots[s.key]}
+              label={`${s.label} reminder`}
               onClick={() => toggle(s.key)}
-              className={cn(
-                "relative h-6 w-11 shrink-0 rounded-full transition-colors",
-                slots[s.key]
-                  ? "bg-[var(--color-check)]"
-                  : "bg-[var(--border)]",
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all",
-                  slots[s.key] ? "left-[1.375rem]" : "left-0.5",
-                )}
-              />
-            </button>
+            />
           </li>
         ))}
       </ul>

@@ -117,13 +117,39 @@ $$ language sql;
 
 -- user_settings: one row per user (created on first change in /settings).
 create table if not exists public.user_settings (
-  user_id    uuid primary key references public.users(id) on delete cascade,
-  notify_11  boolean not null default false,
-  notify_17  boolean not null default false,
-  notify_21  boolean not null default false,
-  timezone   text,                          -- IANA name, validated server-side
-  updated_at timestamptz not null default now()
+  user_id           uuid primary key references public.users(id) on delete cascade,
+  notify_11         boolean not null default false,
+  notify_17         boolean not null default false,
+  notify_21         boolean not null default false,
+  remind_todos      boolean not null default false,  -- morning summary of dated todos
+  remind_events     boolean not null default false,  -- per-event reminders (timed + all-day)
+  remind_offset_min integer not null default 10,     -- minutes before a timed event starts (0 = at start)
+  remind_day_min    integer not null default 540,    -- morning time for day items (minutes from midnight)
+  timezone          text,                            -- IANA name, validated server-side
+  updated_at        timestamptz not null default now(),
+  constraint user_settings_remind_offset_min_check check (remind_offset_min between 0 and 360),
+  constraint user_settings_remind_day_min_check    check (remind_day_min between 0 and 1439)
 );
+
+-- The same columns for databases created before reminders existed
+-- (supabase/reminders.sql runs these too; kept here so a fresh + an old
+-- install converge on the same shape).
+alter table public.user_settings add column if not exists remind_todos      boolean not null default false;
+alter table public.user_settings add column if not exists remind_events     boolean not null default false;
+alter table public.user_settings add column if not exists remind_offset_min integer not null default 10;
+alter table public.user_settings add column if not exists remind_day_min    integer not null default 540;
+
+do $$ begin
+  alter table public.user_settings
+    add constraint user_settings_remind_offset_min_check
+    check (remind_offset_min between 0 and 360);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table public.user_settings
+    add constraint user_settings_remind_day_min_check
+    check (remind_day_min between 0 and 1439);
+exception when duplicate_object then null; end $$;
 
 -- push_subscriptions: one row per browser/device subscription.
 -- UNIQUE(endpoint) + upsert-on-conflict ⇒ re-subscribing while logged in as
@@ -154,6 +180,23 @@ create table if not exists public.push_log (
 );
 create index if not exists push_log_user_date_idx on public.push_log(user_id, date);
 
+-- reminder_log: item-reminder dedupe (push_log can't be reused: its CHECK
+-- pins hour to the 11/17/21 slots). One row per (user, dedupe_key); keys are
+-- "todos@YYYY-MM-DD" and "event:<uuid>@YYYY-MM-DD" in the user's LOCAL date.
+-- `date` exists only so retention cleanup can do `date < cutoff` without
+-- parsing the key.
+create table if not exists public.reminder_log (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.users(id) on delete cascade,
+  dedupe_key text not null,
+  date       date not null,
+  sent_at    timestamptz,
+  created_at timestamptz not null default now(),
+  constraint reminder_log_user_dedupe_key unique (user_id, dedupe_key)
+);
+create index if not exists reminder_log_user_date_idx on public.reminder_log(user_id, date);
+
 alter table public.user_settings      enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.push_log           enable row level security;
+alter table public.reminder_log       enable row level security;

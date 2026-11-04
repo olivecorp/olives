@@ -4,10 +4,17 @@ import { localDateISO, localHourMinute } from "@/lib/time";
 import { sendToUser } from "@/lib/push";
 import {
   claimPushLog,
+  claimReminderLog,
+  countPushSubscriptions,
   deletePushLogOlderThanDays,
+  deleteReminderLogOlderThanDays,
   getActiveNotificationSettings,
+  getReminderEvents,
+  getReminderTodos,
   markPushLogSent,
+  markReminderLogSent,
   releasePushLog,
+  releaseReminderLog,
 } from "@/lib/db";
 
 // Node runtime (web-push + node:crypto); 60s gives multi-user sends room on
@@ -26,6 +33,16 @@ const PAYLOADS: Record<Slot, { title: string; body: string }> = {
 
 const WINDOW_MIN = 60; // fire when local time is 0–59 min past the slot
 
+// Item reminders (the scheduler ticks every 5 minutes — supabase/cron.sql):
+// - day items (the todos summary + all-day events) fire any time in the
+//   first DAY_WINDOW_MIN minutes after the morning time;
+// - timed events fire within EVENT_WINDOW_MIN of their (start − offset)
+//   minute. 9 minutes comfortably covers the 5-minute tick grid plus jitter,
+//   and bounds lateness to 9 minutes past start — a reminder missed for
+//   longer is dropped, never delivered long after the fact.
+const DAY_WINDOW_MIN = 120;
+const EVENT_WINDOW_MIN = 9;
+
 /** Constant-time Bearer check against CRON_SECRET. */
 function authorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -36,6 +53,11 @@ function authorized(req: NextRequest): boolean {
   const a = createHash("sha256").update(auth).digest();
   const b = createHash("sha256").update(expected).digest();
   return timingSafeEqual(a, b);
+}
+
+/** Minutes from midnight → "HH:MM" (24h, zero-padded). */
+function hhmm(min: number): string {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 }
 
 async function handle(req: NextRequest) {
@@ -51,17 +73,30 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  // Dev-only override: pretend it's exactly `slot` o'clock for every user so
-  // the route can be exercised without waiting for a real hour.
+  // Dev-only overrides: pretend it's exactly `slot` o'clock for every user so
+  // the slots can be exercised without waiting for a real hour; `remindMin`
+  // (0–1439) forces the reminder engine's local minute and `date` its query
+  // date, so item reminders can be tested the same way.
   const devSlot = process.env.NODE_ENV !== "production"
     ? Number(req.nextUrl.searchParams.get("slot"))
     : NaN;
   const useDev = SLOTS.includes(devSlot as Slot);
+  const devRemindMin = process.env.NODE_ENV !== "production"
+    ? Number(req.nextUrl.searchParams.get("remindMin"))
+    : NaN;
+  const useDevRemind =
+    Number.isInteger(devRemindMin) && devRemindMin >= 0 && devRemindMin <= 1439;
+  const devDate =
+    process.env.NODE_ENV !== "production"
+      ? req.nextUrl.searchParams.get("date")
+      : null;
 
   const now = new Date();
   let claimed = 0;
   let sent = 0;
   let skipped = 0;
+  let remindersSent = 0;
+  let errors = 0;
 
   try {
     const rows = await getActiveNotificationSettings();
@@ -71,34 +106,144 @@ async function handle(req: NextRequest) {
         ? { hour: devSlot as number, minute: 0 }
         : localHourMinute(now, tz);
       const date = useDev ? "1970-01-01" : localDateISO(now, tz);
+      const nowMin = hour * 60 + minute;
 
-      const slot = SLOTS.find((h) => {
-        const on = h === 11 ? s.notify_11 : h === 17 ? s.notify_17 : s.notify_21;
-        if (!on) return false;
-        // "Just passed": within the last hour (handles hourly ticks landing
-        // anywhere in the window, incl. half-hour-offset timezones).
-        const passed = hour * 60 + minute - h * 60;
-        return passed >= 0 && passed < WINDOW_MIN;
-      });
-      if (!slot) {
-        skipped++;
-        continue;
+      // ---- engine 1: the fixed 11/17/21 check-ins --------------------------
+      try {
+        const slot = SLOTS.find((h) => {
+          const on = h === 11 ? s.notify_11 : h === 17 ? s.notify_17 : s.notify_21;
+          if (!on) return false;
+          // "Just passed": within the last hour (handles ticks landing
+          // anywhere in the window, incl. half-hour-offset timezones).
+          const passed = nowMin - h * 60;
+          return passed >= 0 && passed < WINDOW_MIN;
+        });
+        if (!slot) {
+          skipped++;
+        } else if ((await countPushSubscriptions(s.user_id)) === 0) {
+          // No device to receive it — skip WITHOUT claiming, so the slot
+          // still fires (within its window) once a device subscribes.
+          skipped++;
+        } else {
+          // Claim (user, date, slot) — exactly-once across overlapping runs.
+          const claimId = await claimPushLog(s.user_id, date, slot);
+          if (claimId) {
+            claimed++;
+            try {
+              sent += await sendToUser(s.user_id, PAYLOADS[slot]);
+              await markPushLogSent(claimId);
+            } catch {
+              // Config error (e.g. VAPID missing) — release the claim so the
+              // next run retries this slot instead of silently losing it.
+              await releasePushLog(claimId).catch(() => {});
+            }
+          }
+        }
+      } catch {
+        errors++; // per-user isolation — one bad row must not kill the run
       }
 
-      // Claim (user, date, slot) — exactly-once across overlapping runs.
-      const claimId = await claimPushLog(s.user_id, date, slot);
-      if (!claimId) continue;
-      claimed++;
+      // ---- engine 2: item reminders -----------------------------------------
+      // Todos summary + per-event reminders, computed from the server-side
+      // mirror of the local-first tables in the user's stored timezone.
+      // Skipped under ?slot= — its fake 1970-01-01 date must not leak into
+      // the event/todo queries.
+      if (useDev || (!s.remind_todos && !s.remind_events)) continue;
+
       try {
-        sent += await sendToUser(s.user_id, PAYLOADS[slot]);
-        await markPushLogSent(claimId);
+        const rdate = useDevRemind
+          ? (devDate ?? localDateISO(now, tz))
+          : date;
+        const rnowMin = useDevRemind ? devRemindMin : nowMin;
+        const dayWindow =
+          rnowMin >= s.remind_day_min &&
+          rnowMin < s.remind_day_min + DAY_WINDOW_MIN;
+
+        const events = s.remind_events
+          ? await getReminderEvents(s.user_id, rdate)
+          : [];
+        // Todos are only queried inside the window — an empty summary is NOT
+        // claimed, so a todo added later that morning still fires it.
+        const todoRes =
+          s.remind_todos && dayWindow
+            ? await getReminderTodos(s.user_id, rdate)
+            : { count: 0, texts: [] };
+
+        const timed = events.filter((e) => {
+          if (e.all_day || e.start_min == null) return false;
+          const fire = Math.max(0, e.start_min - s.remind_offset_min);
+          return rnowMin >= fire && rnowMin < fire + EVENT_WINDOW_MIN;
+        });
+        const allday = dayWindow
+          ? events.filter((e) => e.all_day || e.start_min == null)
+          : [];
+
+        if (todoRes.count === 0 && timed.length === 0 && allday.length === 0) {
+          skipped++;
+          continue;
+        }
+        if ((await countPushSubscriptions(s.user_id)) === 0) {
+          // Nothing to receive it yet — don't claim; a device subscribing
+          // within the window still gets the reminder.
+          skipped++;
+          continue;
+        }
+
+        const sends: { key: string; tag: string; title: string; body: string }[] =
+          [];
+        if (todoRes.count > 0) {
+          const shown = todoRes.texts.map((t) =>
+            t.length > 40 ? t.slice(0, 39) + "…" : t,
+          );
+          const extra =
+            todoRes.count > shown.length
+              ? ` +${todoRes.count - shown.length} more`
+              : "";
+          sends.push({
+            key: `todos@${rdate}`,
+            tag: "olives-todos",
+            title: "Today's todos",
+            body: `${todoRes.count} due today — ${shown.join(", ")}${extra}`,
+          });
+        }
+        for (const e of allday) {
+          sends.push({
+            key: `event:${e.id}@${rdate}`,
+            tag: `event-${e.id}`,
+            title: e.title || "Untitled event",
+            body: e.location ? `All day today · ${e.location}` : "All day today",
+          });
+        }
+        for (const e of timed) {
+          sends.push({
+            key: `event:${e.id}@${rdate}`,
+            tag: `event-${e.id}`,
+            title: e.title || "Upcoming event",
+            body: `Starts at ${hhmm(e.start_min!)}${e.location ? ` · ${e.location}` : ""}`,
+          });
+        }
+
+        for (const item of sends) {
+          const claimId = await claimReminderLog(s.user_id, item.key, rdate);
+          if (!claimId) continue;
+          try {
+            remindersSent += await sendToUser(
+              s.user_id,
+              { title: item.title, body: item.body },
+              { tag: item.tag, url: "/calendar" },
+            );
+            await markReminderLogSent(claimId);
+          } catch {
+            // Release the claim so the next tick retries this reminder.
+            await releaseReminderLog(claimId).catch(() => {});
+          }
+        }
       } catch {
-        // Config error (e.g. VAPID missing) — release the claim so the next
-        // hourly run retries this slot instead of silently losing it.
-        await releasePushLog(claimId).catch(() => {});
+        errors++;
       }
     }
     await deletePushLogOlderThanDays(60);
+    await deleteReminderLogOlderThanDays(60);
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "notify failed" },
@@ -106,7 +251,14 @@ async function handle(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, claimed, sent, skipped });
+  return NextResponse.json({
+    ok: true,
+    claimed,
+    sent,
+    skipped,
+    remindersSent,
+    errors,
+  });
 }
 
 export async function GET(req: NextRequest) {
