@@ -35,7 +35,8 @@ const WINDOW_MIN = 60; // fire when local time is 0–59 min past the slot
 
 // Item reminders (the scheduler ticks hourly — supabase/cron.sql):
 // - day items (the todos summary + all-day events) fire any time in the
-//   first DAY_WINDOW_MIN minutes after the morning time;
+//   first DAY_WINDOW_MIN minutes after the morning time, and only when the
+//   morning reminder switch (remind_day_enabled) is on;
 // - timed events fire within EVENT_WINDOW_MIN of their (start − offset)
 //   minute, which can fall the day BEFORE the event for the 1-day offset.
 //   Any 60-minute half-open window catches exactly one hourly tick, and
@@ -165,7 +166,10 @@ async function handle(req: NextRequest) {
           ? (devDate ?? localDateISO(now, tz))
           : date;
         const rnowMin = useDevRemind ? devRemindMin : nowMin;
+        // The morning ping (todos summary + all-day events) has its own
+        // master switch — timed-event reminders below run regardless of it.
         const dayWindow =
+          s.remind_day_enabled &&
           rnowMin >= s.remind_day_min &&
           rnowMin < s.remind_day_min + DAY_WINDOW_MIN;
 

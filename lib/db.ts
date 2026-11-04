@@ -315,6 +315,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   remind_todos: false,
   remind_events: false,
   remind_offset_min: 60,
+  remind_day_enabled: true,
   remind_day_min: 540,
   timezone: null,
 };
@@ -323,7 +324,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
   const { data, error } = await admin()
     .from("user_settings")
     // One literal string — supabase-js types the row shape from it.
-    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_min, timezone")
+    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_enabled, remind_day_min, timezone")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
@@ -335,6 +336,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
     remind_todos: data.remind_todos ?? false,
     remind_events: data.remind_events ?? false,
     remind_offset_min: data.remind_offset_min ?? 60,
+    remind_day_enabled: data.remind_day_enabled ?? true,
     remind_day_min: data.remind_day_min ?? 540,
     timezone: data.timezone ?? null,
   };
@@ -353,7 +355,7 @@ export async function updateUserSettings(
   const { data, error } = await admin()
     .from("user_settings")
     .upsert(next, { onConflict: "user_id" })
-    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_min, timezone")
+    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_enabled, remind_day_min, timezone")
     .single();
   if (error) throw error;
   return {
@@ -363,6 +365,7 @@ export async function updateUserSettings(
     remind_todos: data.remind_todos ?? false,
     remind_events: data.remind_events ?? false,
     remind_offset_min: data.remind_offset_min ?? 60,
+    remind_day_enabled: data.remind_day_enabled ?? true,
     remind_day_min: data.remind_day_min ?? 540,
     timezone: data.timezone ?? null,
   };
@@ -374,7 +377,7 @@ export async function getActiveNotificationSettings(): Promise<
 > {
   const { data, error } = await admin()
     .from("user_settings")
-    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_min, timezone")
+    .select("user_id, notify_11, notify_17, notify_21, remind_todos, remind_events, remind_offset_min, remind_day_enabled, remind_day_min, timezone")
     .or("notify_11.eq.true,notify_17.eq.true,notify_21.eq.true,remind_todos.eq.true,remind_events.eq.true")
     .not("timezone", "is", null);
   if (error) throw error;
@@ -386,6 +389,7 @@ export async function getActiveNotificationSettings(): Promise<
     remind_todos: (s.remind_todos as boolean | null) ?? false,
     remind_events: (s.remind_events as boolean | null) ?? false,
     remind_offset_min: (s.remind_offset_min as number | null) ?? 60,
+    remind_day_enabled: (s.remind_day_enabled as boolean | null) ?? true,
     remind_day_min: (s.remind_day_min as number | null) ?? 540,
     timezone: s.timezone as string,
   }));

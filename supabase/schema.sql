@@ -121,10 +121,11 @@ create table if not exists public.user_settings (
   notify_11         boolean not null default false,
   notify_17         boolean not null default false,
   notify_21         boolean not null default false,
-  remind_todos      boolean not null default false,  -- morning summary of dated todos
-  remind_events     boolean not null default false,  -- per-event reminders (timed + all-day)
-  remind_offset_min integer not null default 60,     -- minutes before a timed event starts (1 h / 3 h / 1 day)
-  remind_day_min    integer not null default 540,    -- morning time for day items (minutes from midnight)
+  remind_todos       boolean not null default false,  -- morning summary of dated todos
+  remind_events      boolean not null default false,  -- per-event reminders (timed + all-day)
+  remind_offset_min  integer not null default 60,     -- minutes before a timed event starts (1 h / 3 h / 1 day)
+  remind_day_enabled boolean not null default true,   -- master switch for the morning ping (todos + all-day events)
+  remind_day_min     integer not null default 540,    -- morning time for day items (minutes from midnight)
   timezone          text,                            -- IANA name, validated server-side
   updated_at        timestamptz not null default now(),
   constraint user_settings_remind_offset_min_check check (remind_offset_min between 0 and 1440),
@@ -134,10 +135,11 @@ create table if not exists public.user_settings (
 -- The same columns for databases created before reminders existed
 -- (supabase/reminders.sql runs these too; kept here so a fresh + an old
 -- install converge on the same shape).
-alter table public.user_settings add column if not exists remind_todos      boolean not null default false;
-alter table public.user_settings add column if not exists remind_events     boolean not null default false;
-alter table public.user_settings add column if not exists remind_offset_min integer not null default 60;
-alter table public.user_settings add column if not exists remind_day_min    integer not null default 540;
+alter table public.user_settings add column if not exists remind_todos       boolean not null default false;
+alter table public.user_settings add column if not exists remind_events      boolean not null default false;
+alter table public.user_settings add column if not exists remind_offset_min  integer not null default 60;
+alter table public.user_settings add column if not exists remind_day_enabled boolean not null default true;
+alter table public.user_settings add column if not exists remind_day_min     integer not null default 540;
 alter table public.user_settings alter column remind_offset_min set default 60;
 
 -- Drop-then-add so an early "0–360" constraint is replaced, not skipped.

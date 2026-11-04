@@ -120,9 +120,9 @@ in-app — accounts live entirely in `APP_USERS`.
 
 One flow, two engines. Each user toggles **11:00 / 17:00 / 21:00** daily
 check-ins and **calendar & todo reminders** (todos, events, a 1 h / 3 h / 1 day
-lead time for timed events, and the morning time for day items) together in
-**/settings** (all times are in their own timezone — the browser reports it
-automatically). Delivery:
+lead time for timed events, and the morning reminder — its own on/off switch
+plus time — for todos and all-day events) together in **/settings** (all times
+are in their own timezone — the browser reports it automatically). Delivery:
 
 1. A **pg_cron** job in Supabase ([`supabase/cron.sql`](supabase/cron.sql),
    run it once in the SQL editor) pings `/api/cron/notify` with `CRON_SECRET`
@@ -133,7 +133,8 @@ automatically). Delivery:
      per user per day per slot.
    - **Item reminders**, computed from the server-side mirror of the
      local-first tables: one morning summary of dated todos plus all-day
-     events (fires any time in the 2 hours after the morning time), and one
+     events (gated by its own switch; fires any time in the 2 hours after
+     the morning time), and one
      reminder per timed event — 1 hour, 3 hours, or 1 day before the start
      (the 1-day one lands the previous day). Each reminder is delivered
      within a 60-minute window, which the hourly tick always lands inside;

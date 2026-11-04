@@ -51,6 +51,7 @@ export function NotificationSettings({
     remind_todos: settings.remind_todos,
     remind_events: settings.remind_events,
     remind_offset_min: settings.remind_offset_min,
+    remind_day_enabled: settings.remind_day_enabled,
     remind_day_min: settings.remind_day_min,
   });
 
@@ -93,7 +94,11 @@ export function NotificationSettings({
         <li className="pt-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
           Calendar &amp; todos
         </li>
-        <li className="flex items-center justify-between gap-3 py-2.5">
+        <li
+          className={`flex items-center justify-between gap-3 py-2.5 ${
+            state.remind_day_enabled ? "" : "opacity-50"
+          }`}
+        >
           <div className="min-w-0">
             <div className="text-sm font-medium">Todos</div>
             <div className="text-xs text-[var(--muted)]">
@@ -140,23 +145,39 @@ export function NotificationSettings({
           </select>
         </li>
         <li className="flex items-center justify-between gap-3 py-2.5">
-          <label htmlFor="remind-day" className="text-sm font-medium">
-            Morning reminder at
-          </label>
-          <select
-            id="remind-day"
-            value={state.remind_day_min}
-            onChange={(e) =>
-              void patch("remind_day_min", Number(e.target.value))
-            }
-            className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm"
-          >
-            {optionsFor(DAY_TIMES, state.remind_day_min).map((v) => (
-              <option key={v} value={v}>
-                {hhmm(v)}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-0">
+            <label htmlFor="remind-day" className="text-sm font-medium">
+              Morning reminder
+            </label>
+            <div className="text-xs text-[var(--muted)]">
+              Todos and all-day events send in the morning — off skips the
+              morning ping (timed events still remind)
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <select
+              id="remind-day"
+              value={state.remind_day_min}
+              onChange={(e) =>
+                void patch("remind_day_min", Number(e.target.value))
+              }
+              disabled={!state.remind_day_enabled}
+              className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm disabled:opacity-50"
+            >
+              {optionsFor(DAY_TIMES, state.remind_day_min).map((v) => (
+                <option key={v} value={v}>
+                  {hhmm(v)}
+                </option>
+              ))}
+            </select>
+            <Switch
+              checked={state.remind_day_enabled}
+              label="Morning reminder"
+              onClick={() =>
+                void patch("remind_day_enabled", !state.remind_day_enabled)
+              }
+            />
+          </div>
         </li>
       </ul>
     </section>

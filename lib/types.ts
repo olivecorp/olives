@@ -42,6 +42,8 @@ export interface UserSettings {
   remind_events: boolean;
   /** Minutes before a timed event's start (presets: 60 / 180 / 1440). */
   remind_offset_min: number;
+  /** Master switch for the morning ping (todos summary + all-day events). */
+  remind_day_enabled: boolean;
   /** Morning time for todos + all-day events, minutes from midnight. */
   remind_day_min: number;
   timezone: string | null; // IANA name, e.g. "America/New_York"

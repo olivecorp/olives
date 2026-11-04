@@ -5,17 +5,19 @@
 -- RUN THIS BEFORE DEPLOYING the reminders code: /api/settings selects these
 -- columns explicitly, so the settings page 500s until they exist.
 --
--- Re-running over the earlier 5-minute-era version is fine: it widens the
--- offset range to a full day and snaps sub-hour offsets up to the new
--- 1-hour default. The scheduler stays hourly — if the job currently runs
--- every 5 minutes, re-run supabase/cron.sql to reschedule it.
+-- Re-running over an earlier reminders version is fine: it widens the offset
+-- range to a full day, snaps sub-hour offsets up to the new 1-hour default,
+-- and adds the remind_day_enabled morning switch (default on — nobody who
+-- gets the morning ping today loses it). The scheduler stays hourly — if the
+-- job currently runs every 5 minutes, re-run supabase/cron.sql to reschedule.
 -- ===========================================================================
 
 -- Reminder switches + timing, per user (same row style as notify_11/17/21).
-alter table public.user_settings add column if not exists remind_todos      boolean not null default false;
-alter table public.user_settings add column if not exists remind_events     boolean not null default false;
-alter table public.user_settings add column if not exists remind_offset_min integer not null default 60;   -- minutes before a timed event starts (1 h / 3 h / 1 day)
-alter table public.user_settings add column if not exists remind_day_min    integer not null default 540;   -- morning time for todos + all-day events (minutes from midnight)
+alter table public.user_settings add column if not exists remind_todos       boolean not null default false;
+alter table public.user_settings add column if not exists remind_events      boolean not null default false;
+alter table public.user_settings add column if not exists remind_offset_min  integer not null default 60;   -- minutes before a timed event starts (1 h / 3 h / 1 day)
+alter table public.user_settings add column if not exists remind_day_enabled boolean not null default true;  -- master switch for the morning ping (todos + all-day events)
+alter table public.user_settings add column if not exists remind_day_min     integer not null default 540;   -- morning time for todos + all-day events (minutes from midnight)
 alter table public.user_settings alter column remind_offset_min set default 60;
 
 -- Offsets are 1 h / 3 h / 1 day, so the v1 range (0–360) widens to a full

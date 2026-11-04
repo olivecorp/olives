@@ -37,6 +37,7 @@ export async function PATCH(req: NextRequest) {
     remind_todos?: boolean;
     remind_events?: boolean;
     remind_offset_min?: number;
+    remind_day_enabled?: boolean;
     remind_day_min?: number;
     timezone?: string | null;
   } = {};
@@ -46,6 +47,7 @@ export async function PATCH(req: NextRequest) {
     "notify_21",
     "remind_todos",
     "remind_events",
+    "remind_day_enabled",
   ] as const) {
     if (typeof body?.[k] === "boolean") patch[k] = body[k];
   }
