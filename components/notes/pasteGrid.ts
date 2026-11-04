@@ -70,12 +70,18 @@ export function parseGrid(text: string): string[][] | null {
   }
   if (rows.length === 0) return null;
 
-  // Tabs mean spreadsheet/TSV — any rectangular-ish data counts. Comma
-  // mode demands at least two rows AND two columns, so multi-line prose
-  // with commas is left alone.
+  // Tabs mean spreadsheet/TSV — any rectangular-ish data counts. Comma mode
+  // is held to a stricter bar because prose is full of commas: every row
+  // must carry the SAME field count (a defining property of real CSV) before
+  // the text is read as a grid. Prose line comma-counts vary, so "Hi, all\n
+  // quick update" (1 comma, then none) no longer becomes a table.
   const cols = Math.max(...rows.map((r) => r.length));
-  if (delim === "\t" ? rows.length < 2 && cols < 2 : rows.length < 2 || cols < 2) {
-    return null;
+  if (delim === "\t") {
+    if (rows.length < 2 && cols < 2) return null;
+  } else {
+    if (rows.length < 2 || cols < 2) return null;
+    const width = rows[0].length;
+    if (rows.some((r) => r.length !== width)) return null;
   }
   if (rows.length > MAX_ROWS || cols > MAX_COLS) return null;
 
