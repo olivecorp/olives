@@ -343,6 +343,21 @@ export async function renameFolder(id: string, name: string): Promise<void> {
   schedulePush();
 }
 
+export type FolderPatch = Partial<
+  Pick<FolderRecord, "name" | "sortOrder">
+>;
+
+export async function updateFolder(id: string, patch: FolderPatch): Promise<void> {
+  const db = getDb();
+  await db.transaction("rw", db.folders, db.outbox, async () => {
+    const cur = await db.folders.get(id);
+    if (!cur || cur.deleted) return;
+    await db.folders.put({ ...cur, ...patch, updatedAt: nowMs() });
+    await queue(db, "folders", id);
+  });
+  schedulePush();
+}
+
 /**
  * Soft-delete a folder in one transaction: its notes become unfiled and its
  * subfolders move up to the deleted folder's parent — nothing is lost.

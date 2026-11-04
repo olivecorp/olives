@@ -4,6 +4,10 @@ import type { FolderRecord } from "@/lib/local/types";
  * Folder hierarchy helpers. Folders nest via parentId (no FK — LWW rows can
  * arrive in any order, so a missing/deleted parent just renders the folder
  * at the top level, like todos' blockerId).
+ *
+ * Siblings order by sortOrder then name: never-dragged folders (sortOrder 0)
+ * group first in name order, and one drag renumbers the sibling group 1..n,
+ * pinning it — the same section semantics as todo/note rows.
  */
 
 export interface FolderTreeNode {

@@ -34,6 +34,7 @@ import {
   createFolder,
   deleteFolder,
   renameFolder,
+  updateFolder,
   updateNote,
 } from "@/lib/local/mutations";
 import type { NoteRecord } from "@/lib/local/types";
@@ -51,7 +52,11 @@ import type { FolderTree, FolderTreeNode } from "./folderTree";
  * Every section (Unfiled, each folder) is drag-reorderable: never-dragged
  * rows order by last modified (newest first), and one drag renumbers the
  * whole section 1..n, pinning it in the arranged order — the same semantics
- * as the todo lists.
+ * as the todo lists. Folder rows drag the same way within their sibling
+ * group: never-dragged folders order alphabetically on top of the group,
+ * and one drag renumbers the siblings 1..n (dropping over a note or a
+ * folder from another level does nothing — nesting is built with the +
+ * button, not drags).
  */
 export function FolderSidebar({
   userId,
@@ -109,6 +114,30 @@ export function FolderSidebar({
 
   function handleDragEnd({ active, over }: DragEndEvent) {
     if (!over || active.id === over.id) return;
+    const activeId = String(active.id);
+
+    // Folder grips reorder within the sibling group (same parent), with the
+    // same renumber rule as notes: the whole group goes 1..n, pinned in the
+    // arranged order, and rows whose number didn't change skip the write.
+    const node = tree.byId.get(activeId);
+    if (node) {
+      const parent = node.folder.parentId
+        ? tree.byId.get(node.folder.parentId)
+        : null;
+      // Whichever list actually holds the node — a folder is in its parent's
+      // children, or a root (no parent, unknown parent, or an LWW cycle).
+      const siblings =
+        parent && parent.children.includes(node) ? parent.children : tree.roots;
+      const to = siblings.findIndex((n) => n.folder.id === over.id);
+      if (to !== -1) {
+        arrayMove(siblings, siblings.indexOf(node), to).forEach((n, i) => {
+          if (n.folder.sortOrder !== i + 1)
+            void updateFolder(n.folder.id, { sortOrder: i + 1 });
+        });
+      }
+      return;
+    }
+
     const groups = [unfiledNotes, ...byFolder.values()];
     for (const items of groups) {
       const from = items.findIndex((n) => n.id === active.id);
@@ -154,113 +183,112 @@ export function FolderSidebar({
 
     return (
       <div key={f.id}>
-        <div
-          className="group relative flex items-center gap-0.5"
-          style={{ paddingLeft: depth * 14 }}
-        >
-          <button
-            onClick={() => expandable && onToggleCollapsed(f.id)}
-            title={
-              expandable ? (isCollapsed ? "Expand" : "Collapse") : undefined
-            }
-            className={cn(
-              "flex h-5 w-4 shrink-0 items-center justify-center text-[var(--muted)]",
-              !expandable && "invisible",
+        <SortableFolderRow id={f.id} depth={depth}>
+          <div className="group relative flex min-w-0 flex-1 items-center gap-0.5">
+              <button
+                onClick={() => expandable && onToggleCollapsed(f.id)}
+              title={
+                expandable ? (isCollapsed ? "Expand" : "Collapse") : undefined
+              }
+              className={cn(
+                "flex h-5 w-4 shrink-0 items-center justify-center text-[var(--muted)]",
+                !expandable && "invisible",
+              )}
+            >
+              <ChevronRight
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  expandable && !isCollapsed && "rotate-90",
+                )}
+              />
+            </button>
+
+            {renaming ? (
+              <input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => {
+                  const v = renameValue.trim();
+                  if (v && v !== f.name) void renameFolder(f.id, v);
+                  setRenamingId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setRenamingId(null);
+                }}
+                autoFocus
+                className="my-0.5 h-8 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--card)] px-2 text-sm"
+              />
+            ) : (
+              <button
+                onClick={() => {
+                  onSelect(f.id);
+                  if (isCollapsed) onToggleCollapsed(f.id);
+                }}
+                onDoubleClick={() => {
+                  setRenamingId(f.id);
+                  setRenameValue(f.name);
+                }}
+                title={`${f.name || "(folder)"} (double-click to rename)`}
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                  selected === f.id
+                    ? "bg-[var(--color-check-soft)] font-semibold text-[var(--color-check)]"
+                    : "text-[var(--muted)] hover:bg-black/5",
+                )}
+              >
+                <Folder className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 truncate">{f.name || "(folder)"}</span>
+                <span className="ml-auto text-xs tabular-nums transition-opacity group-hover:opacity-0">
+                  {totals.get(f.id) ?? 0}
+                </span>
+              </button>
             )}
-          >
-            <ChevronRight
-              className={cn(
-                "h-3 w-3 transition-transform",
-                expandable && !isCollapsed && "rotate-90",
-              )}
-            />
-          </button>
 
-          {renaming ? (
-            <input
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onBlur={() => {
-                const v = renameValue.trim();
-                if (v && v !== f.name) void renameFolder(f.id, v);
-                setRenamingId(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-                if (e.key === "Escape") setRenamingId(null);
-              }}
-              autoFocus
-              className="my-0.5 h-8 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--card)] px-2 text-sm"
-            />
-          ) : (
-            <button
-              onClick={() => {
-                onSelect(f.id);
-                if (isCollapsed) onToggleCollapsed(f.id);
-              }}
-              onDoubleClick={() => {
-                setRenamingId(f.id);
-                setRenameValue(f.name);
-              }}
-              title={`${f.name || "(folder)"} (double-click to rename)`}
-              className={cn(
-                "flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
-                selected === f.id
-                  ? "bg-[var(--color-check-soft)] font-semibold text-[var(--color-check)]"
-                  : "text-[var(--muted)] hover:bg-black/5",
-              )}
-            >
-              <Folder className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate">{f.name || "(folder)"}</span>
-              <span className="ml-auto text-xs tabular-nums transition-opacity group-hover:opacity-0">
-                {totals.get(f.id) ?? 0}
-              </span>
-            </button>
-          )}
-
-          {/* Floated over the row's right edge, out of flow: occupying inline
-              space here reserved ~60px at the end of every folder row, so
-              folder counts lined up left of Unfiled's (which has no actions).
-              The count fades out on hover to make room. */}
-          {!renaming && (
-          <span className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center rounded-md bg-[var(--card)] pl-1 shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
-            <button
-              onClick={() => {
-                setRenamingId(f.id);
-                setRenameValue(f.name);
-              }}
-              title="Rename folder"
-              className="p-1 text-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              <Pencil className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => {
-                setAddingAt(f.id);
-                setNewName("");
-              }}
-              title="New subfolder"
-              className="p-1 text-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => {
-                if (
-                  window.confirm(
-                    `Delete folder "${f.name}"? Its notes become unfiled and its subfolders move up one level.`,
+            {/* Floated over the row's right edge, out of flow: occupying inline
+                space here reserved ~60px at the end of every folder row, so
+                folder counts lined up left of Unfiled's (which has no actions).
+                The count fades out on hover to make room. */}
+            {!renaming && (
+            <span className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center rounded-md bg-[var(--card)] pl-1 shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                onClick={() => {
+                  setRenamingId(f.id);
+                  setRenameValue(f.name);
+                }}
+                title="Rename folder"
+                className="p-1 text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button
+                onClick={() => {
+                  setAddingAt(f.id);
+                  setNewName("");
+                }}
+                title="New subfolder"
+                className="p-1 text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+              <button
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Delete folder "${f.name}"? Its notes become unfiled and its subfolders move up one level.`,
+                    )
                   )
-                )
-                  void deleteFolder(f.id);
-              }}
-              title="Delete folder"
-              className="p-1 text-[var(--muted)] hover:text-[var(--color-nocheck)]"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </span>
-          )}
-        </div>
+                    void deleteFolder(f.id);
+                }}
+                title="Delete folder"
+                className="p-1 text-[var(--muted)] hover:text-[var(--color-nocheck)]"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </span>
+            )}
+          </div>
+        </SortableFolderRow>
 
         {addingAt === f.id && (
           <NewFolderInput
@@ -268,13 +296,18 @@ export function FolderSidebar({
             onChange={setNewName}
             onCommit={() => commitAdd(f.id)}
             onCancel={() => setAddingAt(null)}
-            indent={depth * 14 + 18}
+            indent={depth * 14 + 36}
           />
         )}
 
         {expandable && !isCollapsed && (
           <div>
-            {node.children.map(renderNode)}
+            <SortableContext
+              items={node.children.map((c) => c.folder.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {node.children.map(renderNode)}
+            </SortableContext>
             <SortableContext
               items={directNotes.map((n) => n.id)}
               strategy={verticalListSortingStrategy}
@@ -296,6 +329,9 @@ export function FolderSidebar({
       >
         <div>
           <div className="flex items-center gap-0.5">
+            {/* Folder rows carry a drag grip in this column; an empty spacer
+                keeps Unfiled's chevron aligned with the folders' chevrons. */}
+            <span className="h-5 w-4 shrink-0" aria-hidden="true" />
             <button
               onClick={() =>
                 unfiledNotes.length > 0 && onToggleCollapsed("unfiled")
@@ -343,7 +379,12 @@ export function FolderSidebar({
           )}
         </div>
 
-        {tree.roots.map(renderNode)}
+        <SortableContext
+          items={tree.roots.map((n) => n.folder.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {tree.roots.map(renderNode)}
+        </SortableContext>
 
         {addingAt === "root" ? (
           <NewFolderInput
@@ -443,6 +484,57 @@ function SortableNote({
         <FileText className="h-3 w-3 shrink-0 opacity-70" />
         <span className="min-w-0 truncate">{note.title || "(untitled)"}</span>
       </button>
+    </div>
+  );
+}
+
+/** A folder row with its drag grip, wired into the enclosing sibling group's
+ *  SortableContext — same shape as SortableNote: the grip is the only drag
+ *  activator, the row itself stays tappable. Children are the row's content
+ *  (chevron, name, hover actions) so renderNode keeps its closures. */
+function SortableFolderRow({
+  id,
+  depth,
+  children,
+}: {
+  id: string;
+  depth: number;
+  children: React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "flex items-center gap-0.5",
+        isDragging && "relative z-20 bg-[var(--card)] shadow-md",
+      )}
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label="Reorder folder"
+        title="Drag to reorder"
+        style={{ marginLeft: depth * 14 }}
+        // touch-none only on the grip — the drag must own the gesture or the
+        // page scrolls out from under it. Everywhere else scrolls normally.
+        className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center text-[var(--border)] hover:text-[var(--muted)] active:cursor-grabbing"
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      {children}
     </div>
   );
 }

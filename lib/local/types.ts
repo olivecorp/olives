@@ -60,6 +60,10 @@ export interface FolderRecord extends BaseRecord {
   name: string;
   /** Parent folder id — folders nest in the sidebar. No FK (see blockerId). */
   parentId: string | null;
+  /** Manual position among its siblings (1 = first). 0 = never placed —
+   *  siblings then order by name. Dragging a grip renumbers the whole
+   *  sibling group, pinning it in the arranged order. Sibling-scoped, like
+   *  TodoRecord.sortOrder. */
   sortOrder: number;
 }
 
