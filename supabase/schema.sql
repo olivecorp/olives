@@ -123,11 +123,11 @@ create table if not exists public.user_settings (
   notify_21         boolean not null default false,
   remind_todos      boolean not null default false,  -- morning summary of dated todos
   remind_events     boolean not null default false,  -- per-event reminders (timed + all-day)
-  remind_offset_min integer not null default 10,     -- minutes before a timed event starts (0 = at start)
+  remind_offset_min integer not null default 60,     -- minutes before a timed event starts (1 h / 3 h / 1 day)
   remind_day_min    integer not null default 540,    -- morning time for day items (minutes from midnight)
   timezone          text,                            -- IANA name, validated server-side
   updated_at        timestamptz not null default now(),
-  constraint user_settings_remind_offset_min_check check (remind_offset_min between 0 and 360),
+  constraint user_settings_remind_offset_min_check check (remind_offset_min between 0 and 1440),
   constraint user_settings_remind_day_min_check    check (remind_day_min between 0 and 1439)
 );
 
@@ -136,14 +136,21 @@ create table if not exists public.user_settings (
 -- install converge on the same shape).
 alter table public.user_settings add column if not exists remind_todos      boolean not null default false;
 alter table public.user_settings add column if not exists remind_events     boolean not null default false;
-alter table public.user_settings add column if not exists remind_offset_min integer not null default 10;
+alter table public.user_settings add column if not exists remind_offset_min integer not null default 60;
 alter table public.user_settings add column if not exists remind_day_min    integer not null default 540;
+alter table public.user_settings alter column remind_offset_min set default 60;
 
+-- Drop-then-add so an early "0–360" constraint is replaced, not skipped.
+alter table public.user_settings drop constraint if exists user_settings_remind_offset_min_check;
 do $$ begin
   alter table public.user_settings
     add constraint user_settings_remind_offset_min_check
-    check (remind_offset_min between 0 and 360);
+    check (remind_offset_min between 0 and 1440);
 exception when duplicate_object then null; end $$;
+
+-- The first reminders version offered minute-level offsets; anything finer
+-- than the 1-hour preset snaps up to it.
+update public.user_settings set remind_offset_min = 60 where remind_offset_min < 60;
 
 do $$ begin
   alter table public.user_settings

@@ -314,7 +314,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   notify_21: false,
   remind_todos: false,
   remind_events: false,
-  remind_offset_min: 10,
+  remind_offset_min: 60,
   remind_day_min: 540,
   timezone: null,
 };
@@ -334,7 +334,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
     notify_21: data.notify_21,
     remind_todos: data.remind_todos ?? false,
     remind_events: data.remind_events ?? false,
-    remind_offset_min: data.remind_offset_min ?? 10,
+    remind_offset_min: data.remind_offset_min ?? 60,
     remind_day_min: data.remind_day_min ?? 540,
     timezone: data.timezone ?? null,
   };
@@ -362,7 +362,7 @@ export async function updateUserSettings(
     notify_21: data.notify_21,
     remind_todos: data.remind_todos ?? false,
     remind_events: data.remind_events ?? false,
-    remind_offset_min: data.remind_offset_min ?? 10,
+    remind_offset_min: data.remind_offset_min ?? 60,
     remind_day_min: data.remind_day_min ?? 540,
     timezone: data.timezone ?? null,
   };
@@ -385,7 +385,7 @@ export async function getActiveNotificationSettings(): Promise<
     notify_21: s.notify_21 as boolean,
     remind_todos: (s.remind_todos as boolean | null) ?? false,
     remind_events: (s.remind_events as boolean | null) ?? false,
-    remind_offset_min: (s.remind_offset_min as number | null) ?? 10,
+    remind_offset_min: (s.remind_offset_min as number | null) ?? 60,
     remind_day_min: (s.remind_day_min as number | null) ?? 540,
     timezone: s.timezone as string,
   }));
@@ -584,22 +584,25 @@ export async function getReminderTodos(
 /** One reminder-eligible event row (local-first events table, server mirror). */
 export interface ReminderEventRow {
   id: string;
+  date: string; // YYYY-MM-DD, the event's own local date
   title: string;
   all_day: boolean;
   start_min: number | null;
   location: string | null;
 }
 
-/** The user's events for one local date (deleted rows filtered out). */
+/** The user's events for the given local dates (deleted rows filtered out).
+ * With a 1-day offset a reminder is due the day BEFORE its event, so callers
+ * pass [today, tomorrow] and tell the days apart via each row's `date`. */
 export async function getReminderEvents(
   userId: string,
-  dateISO: string,
+  datesISO: string[],
 ): Promise<ReminderEventRow[]> {
   const { data, error } = await admin()
     .from("events")
-    .select("id, title, all_day, start_min, location")
+    .select("id, date, title, all_day, start_min, location")
     .eq("user_id", userId)
-    .eq("date", dateISO)
+    .in("date", datesISO)
     .eq("deleted", false);
   if (error) throw error;
   return (data ?? []) as ReminderEventRow[];

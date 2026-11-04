@@ -45,7 +45,9 @@ write), and adds a `set_completion()` helper.
 
 If the project predates calendar/todo reminders, also run
 [`supabase/reminders.sql`](supabase/reminders.sql) — it adds the reminder
-settings columns and the `reminder_log` dedupe table.
+settings columns and the `reminder_log` dedupe table. Re-running it after an
+earlier reminders version is safe: it widens the offset range to a full day
+and snaps sub-hour offsets up to 1 hour.
 
 ### 3. Run
 
@@ -91,7 +93,7 @@ account from `APP_USERS`.
 - **`push_subscriptions`** — one row per device/browser (Web Push).
 - **`push_log`** — dedupe table so each daily slot fires exactly once.
 - **`reminder_log`** — dedupe table so each item reminder fires exactly once
-  (`todos@<date>` / `event:<id>@<date>` per user).
+  (`todos@<date>` / `event:<id>@<event's date>` per user).
 
 ### Scoring (blanks stay blank; averages count them as missed)
 
@@ -117,12 +119,14 @@ in-app — accounts live entirely in `APP_USERS`.
 ### Push notifications
 
 One flow, two engines. Each user toggles **11:00 / 17:00 / 21:00** daily
-check-ins and **calendar & todo reminders** in **/settings** (all times are in
-their own timezone — the browser reports it automatically). Delivery:
+check-ins and **calendar & todo reminders** (todos, events, a 1 h / 3 h / 1 day
+lead time for timed events, and the morning time for day items) together in
+**/settings** (all times are in their own timezone — the browser reports it
+automatically). Delivery:
 
 1. A **pg_cron** job in Supabase ([`supabase/cron.sql`](supabase/cron.sql),
    run it once in the SQL editor) pings `/api/cron/notify` with `CRON_SECRET`
-   every 5 minutes.
+   hourly.
 2. The route computes each user's local time and runs two engines:
    - **Daily slots**: anyone who has **just passed** an enabled slot (within
      the last 60 minutes) gets the check-in. `push_log` guarantees one send
@@ -130,10 +134,13 @@ their own timezone — the browser reports it automatically). Delivery:
    - **Item reminders**, computed from the server-side mirror of the
      local-first tables: one morning summary of dated todos plus all-day
      events (fires any time in the 2 hours after the morning time), and one
-     reminder per timed event (`remind_offset_min` minutes before start,
-     delivered within a 9-minute window so a missed tick drops the reminder
-     instead of delivering it long after the fact). `reminder_log`
-     (`todos@<date>` / `event:<id>@<date>`) guarantees exactly-once.
+     reminder per timed event — 1 hour, 3 hours, or 1 day before the start
+     (the 1-day one lands the previous day). Each reminder is delivered
+     within a 60-minute window, which the hourly tick always lands inside;
+     since the smallest lead is an hour, delivery always precedes the start.
+     A reminder missed for longer than its window is dropped, never
+     delivered long after the fact. `reminder_log`
+     (`todos@<date>` / `event:<id>@<event's date>`) guarantees exactly-once.
 3. Nothing is claimed while the user has no subscribed device, so enabling
    reminders and subscribing afterwards still delivers within the window.
 4. On iPhone/iPad, notifications require the app to be **installed to the Home
@@ -182,8 +189,8 @@ npm run lint    # eslint
 3. Add all the env vars above in **Project → Settings → Environment
    Variables** and deploy. Ensure the Supabase schema has been run.
 4. In the Supabase SQL editor, run [`supabase/cron.sql`](supabase/cron.sql)
-   with your real `CRON_SECRET` (and production URL) to schedule the
-   every-5-minutes notification tick. Verify with `select * from cron.job;`
+   with your real `CRON_SECRET` (and production URL) to schedule the hourly
+   notification tick. Verify with `select * from cron.job;`
    and `select * from net._http_response order by id desc limit 5;`.
 
 ### Managing accounts

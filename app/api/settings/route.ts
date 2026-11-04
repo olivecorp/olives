@@ -52,9 +52,9 @@ export async function PATCH(req: NextRequest) {
   // Reminder timing — ranges mirror the DB CHECK constraints.
   if (body?.remind_offset_min !== undefined) {
     const v = Number(body.remind_offset_min);
-    if (!Number.isInteger(v) || v < 0 || v > 360) {
+    if (!Number.isInteger(v) || v < 0 || v > 1440) {
       return NextResponse.json(
-        { error: "remind_offset_min must be an integer 0–360." },
+        { error: "remind_offset_min must be an integer 0–1440." },
         { status: 400 },
       );
     }

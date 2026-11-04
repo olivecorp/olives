@@ -5,7 +5,6 @@ import type { UserSettings } from "@/lib/types";
 import { ApiKeys } from "@/components/settings/ApiKeys";
 import { NotificationSettings } from "@/components/settings/NotificationSettings";
 import { PushSettings } from "@/components/settings/PushSettings";
-import { ReminderSettings } from "@/components/settings/ReminderSettings";
 
 interface SettingsData {
   user: { id: string; name: string; username: string | null };
@@ -77,11 +76,6 @@ export default function SettingsPage() {
       )}
 
       <NotificationSettings
-        settings={data.settings}
-        onPatch={patchSettings}
-      />
-
-      <ReminderSettings
         settings={data.settings}
         onPatch={patchSettings}
       />

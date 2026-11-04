@@ -33,15 +33,17 @@ const PAYLOADS: Record<Slot, { title: string; body: string }> = {
 
 const WINDOW_MIN = 60; // fire when local time is 0–59 min past the slot
 
-// Item reminders (the scheduler ticks every 5 minutes — supabase/cron.sql):
+// Item reminders (the scheduler ticks hourly — supabase/cron.sql):
 // - day items (the todos summary + all-day events) fire any time in the
 //   first DAY_WINDOW_MIN minutes after the morning time;
 // - timed events fire within EVENT_WINDOW_MIN of their (start − offset)
-//   minute. 9 minutes comfortably covers the 5-minute tick grid plus jitter,
-//   and bounds lateness to 9 minutes past start — a reminder missed for
-//   longer is dropped, never delivered long after the fact.
+//   minute, which can fall the day BEFORE the event for the 1-day offset.
+//   Any 60-minute half-open window catches exactly one hourly tick, and
+//   since the smallest offset is an hour, delivery always precedes the
+//   start. A reminder missed for longer than its window is dropped, never
+//   delivered long after the fact.
 const DAY_WINDOW_MIN = 120;
-const EVENT_WINDOW_MIN = 9;
+const EVENT_WINDOW_MIN = 60;
 
 /** Constant-time Bearer check against CRON_SECRET. */
 function authorized(req: NextRequest): boolean {
@@ -58,6 +60,14 @@ function authorized(req: NextRequest): boolean {
 /** Minutes from midnight → "HH:MM" (24h, zero-padded). */
 function hhmm(min: number): string {
   return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+
+/** Next day's ISO date ("2026-11-04" → "2026-11-05") — noon UTC so a DST
+ *  transition can never shift the calendar day. */
+function nextDateISO(dateISO: string): string {
+  const t = new Date(`${dateISO}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + 1);
+  return t.toISOString().slice(0, 10);
 }
 
 async function handle(req: NextRequest) {
@@ -159,8 +169,10 @@ async function handle(req: NextRequest) {
           rnowMin >= s.remind_day_min &&
           rnowMin < s.remind_day_min + DAY_WINDOW_MIN;
 
+        // The offset can reach a full day, so a timed event's reminder is
+        // due up to a day before its own date: fetch today's AND tomorrow's.
         const events = s.remind_events
-          ? await getReminderEvents(s.user_id, rdate)
+          ? await getReminderEvents(s.user_id, [rdate, nextDateISO(rdate)])
           : [];
         // Todos are only queried inside the window — an empty summary is NOT
         // claimed, so a todo added later that morning still fires it.
@@ -171,11 +183,20 @@ async function handle(req: NextRequest) {
 
         const timed = events.filter((e) => {
           if (e.all_day || e.start_min == null) return false;
-          const fire = Math.max(0, e.start_min - s.remind_offset_min);
+          // The event's fire minute on TODAY'S clock: tomorrow's events sit
+          // 1440 minutes ahead, so a 1-day offset lands at the same wall
+          // time today, and smaller offsets on tomorrow's events fall out of
+          // range (they fire tomorrow instead).
+          const base = e.date === rdate ? 0 : 1440;
+          const fire = base + e.start_min - s.remind_offset_min;
           return rnowMin >= fire && rnowMin < fire + EVENT_WINDOW_MIN;
         });
+        // All-day events remind in the morning window on their own date.
         const allday = dayWindow
-          ? events.filter((e) => e.all_day || e.start_min == null)
+          ? events.filter(
+              (e) =>
+                e.date === rdate && (e.all_day || e.start_min == null),
+            )
           : [];
 
         if (todoRes.count === 0 && timed.length === 0 && allday.length === 0) {
@@ -208,18 +229,22 @@ async function handle(req: NextRequest) {
         }
         for (const e of allday) {
           sends.push({
-            key: `event:${e.id}@${rdate}`,
+            key: `event:${e.id}@${e.date}`,
             tag: `event-${e.id}`,
             title: e.title || "Untitled event",
             body: e.location ? `All day today · ${e.location}` : "All day today",
           });
         }
         for (const e of timed) {
+          // Dedupe keys carry the event's own date — with a 1-day offset the
+          // send happens the day before, and the key must still be unique to
+          // the occurrence.
+          const when = e.date === rdate ? "Starts at" : "Tomorrow at";
           sends.push({
-            key: `event:${e.id}@${rdate}`,
+            key: `event:${e.id}@${e.date}`,
             tag: `event-${e.id}`,
             title: e.title || "Upcoming event",
-            body: `Starts at ${hhmm(e.start_min!)}${e.location ? ` · ${e.location}` : ""}`,
+            body: `${when} ${hhmm(e.start_min!)}${e.location ? ` · ${e.location}` : ""}`,
           });
         }
 

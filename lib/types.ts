@@ -40,7 +40,7 @@ export interface UserSettings {
   remind_todos: boolean;
   /** Per-event reminders: minutes before timed starts, morning for all-day. */
   remind_events: boolean;
-  /** Minutes before a timed event's start (0 = at start). */
+  /** Minutes before a timed event's start (presets: 60 / 180 / 1440). */
   remind_offset_min: number;
   /** Morning time for todos + all-day events, minutes from midnight. */
   remind_day_min: number;
