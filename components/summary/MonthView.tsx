@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { addDays, addMonths, format, isToday, parseISO } from "date-fns";
 import { toISODate } from "@/lib/utils";
 import type { WindowMode } from "@/lib/dates";
+import { writeSummaryModeDefault } from "@/lib/prefs";
 import {
   buildCompletionIndex,
   scoreOverallDate,
@@ -58,7 +59,13 @@ export function MonthView(props: Props) {
         <div className="ml-auto flex items-center gap-1.5">
           <RollingToggle
             on={mode === "rolling"}
-            onChange={(on) => go(anchorISO, on ? "rolling" : "calendar")}
+            onChange={(on) => {
+              // The toggle sets this device's sticky mode default; date steps
+              // just carry the current mode in the URL.
+              const m: WindowMode = on ? "rolling" : "calendar";
+              writeSummaryModeDefault(m);
+              go(anchorISO, m);
+            }}
           />
           <DateStepper
             value={anchorISO}

@@ -5,7 +5,9 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Olives",
     short_name: "Olives",
     description: "Your todos, calendar, and notes.",
-    start_url: "/calendar",
+    // The root hops to this device's last visited page — the PWA cold-start
+    // resumes where the owner left off.
+    start_url: "/",
     display: "standalone",
     background_color: "#f6f7f9",
     theme_color: "#16a34a",

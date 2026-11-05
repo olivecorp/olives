@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useDashboard } from "@/lib/use-dashboard";
 import { weekDays, type WindowMode } from "@/lib/dates";
 import { toISODate } from "@/lib/utils";
+import { readSummaryModeDefault } from "@/lib/prefs";
 import { WeekView } from "./WeekView";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -14,7 +15,13 @@ export function WeekTab() {
   const todayISO = toISODate(new Date());
   const dateParam = params.get("date");
   const anchor = dateParam && DATE_RE.test(dateParam) ? dateParam : todayISO;
-  const mode: WindowMode = params.get("mode") === "rolling" ? "rolling" : "calendar";
+  // An explicit ?mode= wins; otherwise the device's sticky default (set by
+  // the RollingToggle) applies.
+  const modeParam = params.get("mode");
+  const mode: WindowMode =
+    modeParam === "rolling" || modeParam === "calendar"
+      ? modeParam
+      : readSummaryModeDefault();
   const days = weekDays(anchor, mode);
 
   const { data, error } = useDashboard();

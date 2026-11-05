@@ -12,6 +12,7 @@ import {
   useStorageAvailable,
 } from "@/lib/local/hooks";
 import { createNote } from "@/lib/local/mutations";
+import { readPref, writePref } from "@/lib/prefs";
 import { FolderSidebar } from "./FolderSidebar";
 import { buildFolderTree } from "./folderTree";
 
@@ -19,6 +20,35 @@ import { buildFolderTree } from "./folderTree";
 // it so tapping the Notes tab loads just the list, and the editor bundle
 // downloads on first note open instead.
 const NoteEditor = dynamic(() => import("./NoteEditor").then((m) => m.NoteEditor));
+
+// Sticky per-device notes layout: the folder "New note" files into, and
+// which tree sections are collapsed (folder ids + the "unfiled" sentinel).
+// The collapsed set is the only JSON pref (a string array); corrupt or
+// non-array data reads as "nothing collapsed". Ids of deleted folders ride
+// along inertly — collapsed.has(id) just never matches a rendered row.
+const FOLDER_KEY = "notes-folder-v1";
+const COLLAPSED_KEY = "notes-collapsed-v1";
+
+function readFolder(): string | "unfiled" {
+  // Any string is a legal folder id; a since-deleted one browses as Unfiled
+  // via the `open` fallback. Never healed by an effect write — folders load
+  // async, and that would clobber the saved value on mount.
+  return readPref(FOLDER_KEY) || "unfiled";
+}
+
+function readCollapsed(): Set<string> {
+  const raw = readPref(COLLAPSED_KEY);
+  if (!raw) return new Set();
+  try {
+    const arr: unknown = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.some((x) => typeof x !== "string")) {
+      return new Set();
+    }
+    return new Set(arr as string[]);
+  } catch {
+    return new Set();
+  }
+}
 
 /**
  * The notes home is one page: the folder tree. Folders expand to show their
@@ -36,20 +66,24 @@ export function NotesClient() {
   const searchParams = useSearchParams();
 
   // Where "New note" files; the tree highlights it.
-  const [folder, setFolder] = useState<string | "unfiled">("unfiled");
+  const [folder, setFolder] = useState<string | "unfiled">(readFolder);
   const paramId = searchParams.get("id");
   const [selectedId, setSelectedId] = useState<string | null>(paramId);
   // Which tree rows are collapsed — held here (not in FolderSidebar) so the
   // header's "New note" can expand the target folder before creating.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
 
   function toggleCollapsed(id: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = new Set(collapsed);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsed(next);
+    writePref(COLLAPSED_KEY, JSON.stringify([...next]));
+  }
+
+  function chooseFolder(f: string | "unfiled") {
+    setFolder(f);
+    writePref(FOLDER_KEY, f);
   }
 
   // Open/close a note and mirror it into the URL (?id=): the navbar's back
@@ -72,15 +106,17 @@ export function NotesClient() {
   }, [paramId]);
 
   // New note goes into the selected folder (or Unfiled), which expands so
-  // the note is visible in the tree when the editor closes.
+  // the note is visible in the tree when the editor closes. Files via `open`
+  // (the tree-resolved selection), never the raw `folder` — a remembered
+  // folder that was since deleted must not file the note into a phantom
+  // folder where the tree never shows it.
   async function addNote() {
     if (!userId) return;
-    const target = folder === "unfiled" ? null : folder;
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      next.delete(folder);
-      return next;
-    });
+    const target = open === "unfiled" ? null : open;
+    const next = new Set(collapsed);
+    next.delete(open);
+    setCollapsed(next);
+    writePref(COLLAPSED_KEY, JSON.stringify([...next]));
     const id = await createNote(userId, target);
     if (id) selectNote(id);
   }
@@ -123,7 +159,7 @@ export function NotesClient() {
               tree={tree}
               notes={notes}
               selected={open}
-              onSelect={setFolder}
+              onSelect={chooseFolder}
               collapsed={collapsed}
               onToggleCollapsed={toggleCollapsed}
               selectedNoteId={selectedId}

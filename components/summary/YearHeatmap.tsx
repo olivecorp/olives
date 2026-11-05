@@ -6,6 +6,7 @@ import { addDays, addYears, format, parseISO } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { cn, toISODate } from "@/lib/utils";
 import type { WindowMode } from "@/lib/dates";
+import { writeSummaryModeDefault } from "@/lib/prefs";
 import {
   buildCompletionIndex,
   scoreUserDate,
@@ -169,7 +170,13 @@ export function YearHeatmap(props: Props) {
         <div className="ml-auto flex items-center gap-1.5">
           <RollingToggle
             on={mode === "rolling"}
-            onChange={(on) => go(anchorISO, on ? "rolling" : "calendar")}
+            onChange={(on) => {
+              // The toggle sets this device's sticky mode default; date steps
+              // just carry the current mode in the URL.
+              const m: WindowMode = on ? "rolling" : "calendar";
+              writeSummaryModeDefault(m);
+              go(anchorISO, m);
+            }}
           />
           <button
             type="button"

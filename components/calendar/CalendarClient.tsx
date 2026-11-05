@@ -15,12 +15,21 @@ import {
   useTodos,
 } from "@/lib/local/hooks";
 import { buildDayFeed, buildRangeFeeds } from "@/lib/local/unified";
+import { readPref, writePref } from "@/lib/prefs";
 import { MonthGrid } from "./MonthGrid";
 import { WeekView } from "./WeekView";
 import { AgendaList } from "./AgendaList";
 import { EventDialog, type DialogState } from "./EventDialog";
 
 type View = "month" | "week" | "agenda";
+
+// Sticky per-device view, like the todo list's view tabs. Validated on read.
+const VIEW_KEY = "calendar-view-v1";
+
+function readView(): View {
+  const v = readPref(VIEW_KEY);
+  return v === "week" || v === "agenda" ? v : "month";
+}
 
 const AGENDA_DAYS = 30;
 
@@ -32,7 +41,7 @@ export function CalendarClient() {
   const notes = useNotes(userId);
   const storageOk = useStorageAvailable();
 
-  const [view, setView] = useState<View>("month");
+  const [view, setView] = useState<View>(readView);
   const paramDate = searchParams.get("date");
   const [anchor, setAnchor] = useState(
     /^\d{4}-\d{2}-\d{2}$/.test(paramDate ?? "") ? paramDate! : toISODate(new Date()),
@@ -83,6 +92,11 @@ export function CalendarClient() {
     const base = fromISODate(anchor);
     const next = view === "month" ? addMonths(base, dir) : addWeeks(base, dir);
     jump(toISODate(next));
+  }
+
+  function chooseView(v: View) {
+    setView(v);
+    writePref(VIEW_KEY, v);
   }
 
   const loading = events === undefined || todos === undefined || notes === undefined;
@@ -138,7 +152,7 @@ export function CalendarClient() {
             {(["month", "week", "agenda"] as View[]).map((v) => (
               <button
                 key={v}
-                onClick={() => setView(v)}
+                onClick={() => chooseView(v)}
                 className={cn(
                   "rounded-md px-2 py-1 capitalize transition-colors sm:px-2.5",
                   view === v

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ListChecks, Lock, User } from "lucide-react";
+import { readLastPage } from "@/lib/prefs";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,10 +24,13 @@ export default function LoginPage() {
     });
 
     if (res.ok) {
-      // Default to the calendar (the app's home); ?from= restores a deep
-      // link the middleware stashed on the redirect to /login.
+      // Land where this device left off, unless ?from= restores a deep link
+      // the middleware stashed on the redirect to /login. Calendar is the
+      // first-visit fallback.
       const from =
-        new URLSearchParams(window.location.search).get("from") || "/calendar";
+        new URLSearchParams(window.location.search).get("from") ||
+        readLastPage() ||
+        "/calendar";
       router.replace(from);
       router.refresh();
       return;

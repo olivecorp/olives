@@ -3,7 +3,7 @@ import { SummarySidebar } from "@/components/summary/SummarySidebar";
 /**
  * Shared shell for the daily-tracker pages (Daily/Week/Month/Year): the
  * period-view rail sits beside the content on md+ and above it on phones.
- * Route group keeps the URLs unchanged (`/`, `/week`, `/month`, `/year`).
+ * Route group keeps the URLs unchanged (`/daily`, `/week`, `/month`, `/year`).
  */
 export default function SummaryLayout({
   children,

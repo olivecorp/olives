@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { SWRConfig } from "swr";
 import { Navbar } from "@/components/Navbar";
 import { LocalSyncEngine } from "@/components/LocalSyncEngine";
 import { SectionWarmer } from "@/components/SectionWarmer";
 import { useDashboard } from "@/lib/use-dashboard";
+import { rememberPage } from "@/lib/prefs";
 
 /**
  * Triggers the initial /api/dashboard fetch once per document load. Combined
@@ -26,6 +28,19 @@ function DataLoader() {
     const t = setTimeout(() => void mutate(), 1500);
     return () => clearTimeout(t);
   }, [mutate]);
+  return null;
+}
+
+/** Records the current app route so the root page can land returning visits
+ *  where they left off. Navigation is the user action; an effect on pathname
+ *  catches hard loads and soft navs alike (Link prefetching never mounts
+ *  pages, so only real visits are recorded). Whitelist-guarded in
+ *  rememberPage, so future routes here are simply not remembered yet. */
+function LastPageTracker() {
+  const pathname = usePathname();
+  useEffect(() => {
+    rememberPage(pathname);
+  }, [pathname]);
   return null;
 }
 
@@ -51,6 +66,7 @@ export default function AppLayout({
         {children}
       </main>
       <DataLoader />
+      <LastPageTracker />
       <SectionWarmer />
       <LocalSyncEngine />
     </SWRConfig>
