@@ -126,16 +126,21 @@ function gripDecorations(table: PMNode, tablePos: number, editor: Editor): Decor
   let rowIndex = 0;
   table.forEach((row) => {
     if (gripRows) {
+      // The widget's toDOM runs later (at render), so the loop counters must
+      // be captured per iteration — a closure over `rowIndex` itself would
+      // hand every grip the final value after the loop, and every row grip
+      // would claim to be the last row.
+      const ri = rowIndex;
       // Position: inside the row's first cell, before its content.
       out.push(
         Decoration.widget(
           tablePos + rowOffset + 3,
-          () => makeGrip("row", rowIndex, editor),
+          () => makeGrip("row", ri, editor),
           {
             side: -1,
             ignoreSelection: true,
             stopEvent: () => true,
-            key: `tbl-grip-row-${tablePos}-${rowIndex}`,
+            key: `tbl-grip-row-${tablePos}-${ri}`,
           },
         ),
       );
@@ -144,15 +149,16 @@ function gripDecorations(table: PMNode, tablePos: number, editor: Editor): Decor
       let cellOffset = 0;
       let colIndex = 0;
       row.forEach((cell) => {
+        const ci = colIndex;
         out.push(
           Decoration.widget(
             tablePos + cellOffset + 3,
-            () => makeGrip("col", colIndex, editor),
+            () => makeGrip("col", ci, editor),
             {
               side: -1,
               ignoreSelection: true,
               stopEvent: () => true,
-              key: `tbl-grip-col-${tablePos}-${colIndex}`,
+              key: `tbl-grip-col-${tablePos}-${ci}`,
             },
           ),
         );
@@ -188,6 +194,7 @@ function buildDecorations(doc: PMNode, editor: Editor): DecorationSet {
 function locateTarget(
   view: EditorView,
   event: DragEvent,
+  kind: DragKind,
 ): { tablePos: number; index: number } | null {
   const el = event.target as HTMLElement | null;
   if (!el?.closest) return null;
@@ -196,7 +203,10 @@ function locateTarget(
   const table = findTable(view.state.doc.resolve(view.posAtDOM(tableEl, 0)));
   if (!table) return null;
 
-  if (dragSession?.kind === "row") {
+  // The kind comes in as a parameter: the drop handler clears dragSession
+  // before resolving its target, so branching on the module global there
+  // would send row drops down the column path (cellIndex of the hover cell).
+  if (kind === "row") {
     const tr = el.closest("tr");
     if (!tr) return null;
     const index = Array.from(tableEl.querySelectorAll("tr")).indexOf(tr);
@@ -208,20 +218,24 @@ function locateTarget(
 }
 
 function runMove(view: EditorView, session: DragSession, targetIndex: number): void {
-  // moveTableRow/moveTableColumn resolve rows/columns from the selection,
-  // so park a selection inside this table first. The resulting transaction
-  // carries absolute steps + its own CellSelection, so dispatching it
-  // against the view (whose selection may be elsewhere) is safe.
+  // moveTableRow/moveTableColumn resolve rows/columns through tr.selection,
+  // so park a selection inside this table first. The park must be its own
+  // dispatch: building a side state with view.state.apply(tr) also runs the
+  // table plugins' appendTransaction there (column-resize / table fixes),
+  // yielding a doc the view doesn't share — dispatching the move built on it
+  // against the view then throws "Applying a mismatched transaction". Two
+  // dispatches, each built from the state it is applied to.
   const anchor = session.tablePos + 2; // inside the table's first cell
-  const selTr = view.state.tr.setSelection(
-    TextSelection.near(view.state.doc.resolve(anchor)),
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.near(view.state.doc.resolve(anchor)),
+    ),
   );
-  const state = view.state.apply(selTr);
   const cmd =
     session.kind === "row"
       ? moveTableRow({ from: session.index, to: targetIndex, pos: anchor })
       : moveTableColumn({ from: session.index, to: targetIndex, pos: anchor });
-  cmd(state, (tr) => view.dispatch(tr.scrollIntoView()));
+  cmd(view.state, (tr) => view.dispatch(tr.scrollIntoView()));
 }
 
 // --- menu/keyboard moves ----------------------------------------------------
@@ -289,7 +303,11 @@ export const TableDrag = Extension.create({
       new Plugin({
         key: dragKey,
         state: {
-          init: () => DecorationSet.empty,
+          // Build from the initial doc too — the editor mounts with content
+          // and no transaction may follow, and grips must exist before any
+          // edit (makeGrip only touches editor.view at drag time, so this is
+          // safe to run before the view exists).
+          init: (_, state) => buildDecorations(state.doc, editor),
           apply: (tr, value) =>
             tr.docChanged ? buildDecorations(tr.doc, editor) : value,
         },
@@ -298,7 +316,7 @@ export const TableDrag = Extension.create({
           handleDOMEvents: {
             dragover: (view, event) => {
               if (!dragSession) return false;
-              const target = locateTarget(view, event);
+              const target = locateTarget(view, event, dragSession.kind);
               if (!target || target.tablePos !== dragSession.tablePos) {
                 clearIndicator();
                 return false;
@@ -315,7 +333,7 @@ export const TableDrag = Extension.create({
               event.preventDefault();
               const session = dragSession;
               dragSession = null;
-              const target = locateTarget(view, event);
+              const target = locateTarget(view, event, session.kind);
               clearIndicator();
               if (
                 target &&
