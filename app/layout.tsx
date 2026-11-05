@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Splash } from "@/components/Splash";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -50,7 +51,12 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        {/* Paints with the initial HTML; React dismisses it after hydration
+            (components/Splash.tsx). */}
+        <Splash />
+      </body>
       {/* Block iOS Safari pinch zoom (it ignores user-scalable=no). */}
       <script
         dangerouslySetInnerHTML={{
