@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Splash } from "@/components/Splash";
 import { SwRegister } from "@/components/SwRegister";
 import "./globals.css";
 
@@ -54,9 +53,6 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
-        {/* Paints with the initial HTML; React dismisses it after hydration
-            (components/Splash.tsx). */}
-        <Splash />
         {/* Boots the service worker (shell cache + push) on any route. */}
         <SwRegister />
       </body>
