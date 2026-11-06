@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Splash } from "@/components/Splash";
+import { SwRegister } from "@/components/SwRegister";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -56,6 +57,8 @@ export default function RootLayout({
         {/* Paints with the initial HTML; React dismisses it after hydration
             (components/Splash.tsx). */}
         <Splash />
+        {/* Boots the service worker (shell cache + push) on any route. */}
+        <SwRegister />
       </body>
       {/* Block iOS Safari pinch zoom (it ignores user-scalable=no). */}
       <script
