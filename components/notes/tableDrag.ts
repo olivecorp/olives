@@ -16,10 +16,14 @@ import {
  * grip onto another row/column moves it via prosemirror-tables'
  * moveTableRow / moveTableColumn commands (merged cells handled there).
  *
+ * Mice drag via native HTML5 drag-and-drop (dragstart/dragover/drop).
+ * Touch and pen pointers never fire those events, so grips carry a second,
+ * pointer-event drag path below (pointerdown captures, pointermove
+ * hit-tests, pointerup moves).
+ *
  * Grips are styled in globals.css (.tbl-grip): invisible until the table
- * is hovered with a mouse (touch devices keep them hidden — see the
- * comment there), rendered into the .tableWrapper padding so overflow-x
- * doesn't clip them.
+ * is hovered with a mouse, always visible on touch devices, rendered into
+ * the .tableWrapper padding so overflow-x doesn't clip them.
  */
 
 const dragKey = new PluginKey("noteTableDrag");
@@ -36,16 +40,19 @@ interface DragSession {
 let dragSession: DragSession | null = null;
 
 // --- indicator ------------------------------------------------------------
-// Transient DOM highlighting of the drop target — short-lived enough that
-// direct class toggling beats a decoration round-trip.
+// Transient highlight of the drop target: a fixed-position overlay on
+// <body>, NOT class toggles on the table's rows/cells. The editor DOM is
+// watched by prosemirror-view's MutationObserver, and a foreign mutation
+// there (a class we added) forces a re-render that recreates the grip
+// widgets mid-drag — killing the pointer capture the touch drag depends
+// on. Outside the editor, the overlay is invisible to the observer.
 
-let indicatedEls: HTMLElement[] = [];
-let indicatedKey = "";
+let indicatorEl: HTMLDivElement | null = null;
+let indicatorKey = "";
 
 function clearIndicator(): void {
-  for (const el of indicatedEls) el.classList.remove("tbl-drop-target");
-  indicatedEls = [];
-  indicatedKey = "";
+  indicatorKey = "";
+  if (indicatorEl) indicatorEl.style.display = "none";
 }
 
 function showIndicator(
@@ -54,27 +61,43 @@ function showIndicator(
   targetIndex: number,
 ): void {
   const key = `${session.tablePos}:${session.kind}:${targetIndex}`;
-  if (key === indicatedKey) return;
-  clearIndicator();
+  if (key === indicatorKey) return;
+  indicatorKey = key;
   const tableEl = view.nodeDOM(session.tablePos) as HTMLElement | null;
-  if (!tableEl) return;
+  if (!tableEl) {
+    clearIndicator();
+    return;
+  }
   const rows = Array.from(tableEl.querySelectorAll("tr"));
+  const rects: DOMRect[] = [];
   if (session.kind === "row") {
     const tr = rows[targetIndex];
-    if (tr) {
-      tr.classList.add("tbl-drop-target");
-      indicatedEls = [tr];
-    }
+    if (tr) rects.push(tr.getBoundingClientRect());
   } else {
     for (const row of rows) {
       const cell = row.children[targetIndex];
-      if (cell) {
-        cell.classList.add("tbl-drop-target");
-        indicatedEls.push(cell as HTMLElement);
-      }
+      if (cell) rects.push((cell as HTMLElement).getBoundingClientRect());
     }
   }
-  indicatedKey = key;
+  if (!rects.length) {
+    clearIndicator();
+    return;
+  }
+  if (!indicatorEl) {
+    indicatorEl = document.createElement("div");
+    indicatorEl.className = "tbl-drop-overlay";
+    document.body.appendChild(indicatorEl);
+  }
+  const left = Math.min(...rects.map((r) => r.left));
+  const top = Math.min(...rects.map((r) => r.top));
+  const right = Math.max(...rects.map((r) => r.right));
+  const bottom = Math.max(...rects.map((r) => r.bottom));
+  const s = indicatorEl.style;
+  s.display = "block";
+  s.left = `${left}px`;
+  s.top = `${top}px`;
+  s.width = `${right - left}px`;
+  s.height = `${bottom - top}px`;
 }
 
 // --- grips -----------------------------------------------------------------
@@ -87,6 +110,20 @@ const GRIP_SVG =
     return `<circle cx="${x}" cy="${y}" r="1.4" fill="currentColor"/>`;
   }).join("") +
   "</svg>";
+
+// --- touch drag --------------------------------------------------------------
+// HTML5 drag-and-drop never fires for touch/pen pointers, so the same drag
+// runs on pointer events: pointerdown on a grip captures the pointer,
+// pointermove hit-tests what is under the finger, pointerup applies the move
+// (pointercancel/lostpointercapture abort it). Mouse pointers skip this path
+// entirely and use the native drag handlers above.
+
+interface TouchDrag extends DragSession {
+  pointerId: number;
+  target: { tablePos: number; index: number } | null;
+}
+
+let touchDrag: TouchDrag | null = null;
 
 function makeGrip(kind: DragKind, index: number, editor: Editor): HTMLSpanElement {
   const el = document.createElement("span");
@@ -112,6 +149,57 @@ function makeGrip(kind: DragKind, index: number, editor: Editor): HTMLSpanElemen
     if (ghost) event.dataTransfer.setDragImage(ghost, 12, 12);
     event.stopPropagation();
   });
+  el.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse") return; // native drag handles mice
+    if (touchDrag) return; // one finger drags one grip
+    const view = editor.view;
+    const tableEl = el.closest("table");
+    if (!view || !tableEl) return;
+    const table = findTable(view.state.doc.resolve(view.posAtDOM(tableEl, 0)));
+    if (!table) return;
+    try {
+      // Capture keeps moves/ups flowing to the grip while the finger roams
+      // over other cells; .tbl-grip { touch-action: none } (globals.css)
+      // keeps the gesture from scrolling the page instead of dragging.
+      el.setPointerCapture(event.pointerId);
+    } catch {
+      return;
+    }
+    touchDrag = { kind, index, tablePos: table.pos, pointerId: event.pointerId, target: null };
+    el.classList.add("tbl-grip-active");
+    event.preventDefault(); // no compatibility mouse events / selection
+  });
+  el.addEventListener("pointermove", (event) => {
+    const session = touchDrag;
+    if (!session || event.pointerId !== session.pointerId) return;
+    // Pointer capture pins event.target to the grip — resolve the drop
+    // target from whatever is actually under the finger instead.
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const target = locateTarget(editor.view, hit, session.kind);
+    if (!target || target.tablePos !== session.tablePos) {
+      session.target = null;
+      clearIndicator();
+      return;
+    }
+    session.target = target;
+    showIndicator(editor.view, session, target.index);
+  });
+  el.addEventListener("pointerup", (event) => endDrag(event, true));
+  el.addEventListener("pointercancel", (event) => endDrag(event, false));
+  // The grip can be torn down mid-drag (doc change rebuilds widgets) —
+  // release without applying.
+  el.addEventListener("lostpointercapture", (event) => endDrag(event, false));
+
+  function endDrag(event: PointerEvent, apply: boolean): void {
+    const session = touchDrag;
+    if (!session || event.pointerId !== session.pointerId) return;
+    touchDrag = null;
+    el.classList.remove("tbl-grip-active");
+    clearIndicator();
+    if (apply && session.target && session.target.index !== session.index) {
+      runMove(editor.view, session, session.target.index);
+    }
+  }
   return el;
 }
 
@@ -193,10 +281,9 @@ function buildDecorations(doc: PMNode, editor: Editor): DecorationSet {
 
 function locateTarget(
   view: EditorView,
-  event: DragEvent,
+  el: Element | null,
   kind: DragKind,
 ): { tablePos: number; index: number } | null {
-  const el = event.target as HTMLElement | null;
   if (!el?.closest) return null;
   const tableEl = el.closest("table");
   if (!tableEl) return null;
@@ -239,8 +326,8 @@ function runMove(view: EditorView, session: DragSession, targetIndex: number): v
 }
 
 // --- menu/keyboard moves ----------------------------------------------------
-// HTML5 drag never fires on touch, so the Table menu offers the same moves
-// one step at a time (EditorToolbar wires these up).
+// The Table menu offers the same moves one step at a time (EditorToolbar
+// wires these up) — handy for single-step nudges without a drag.
 
 interface CellInfo {
   rowIndex: number;
@@ -311,12 +398,18 @@ export const TableDrag = Extension.create({
           apply: (tr, value) =>
             tr.docChanged ? buildDecorations(tr.doc, editor) : value,
         },
+        // Editor unmounted mid-drag: drop the body-level overlay too.
+        view: () => ({ destroy: () => clearIndicator() }),
         props: {
           decorations: (state) => dragKey.getState(state),
           handleDOMEvents: {
             dragover: (view, event) => {
               if (!dragSession) return false;
-              const target = locateTarget(view, event, dragSession.kind);
+              const target = locateTarget(
+                view,
+                event.target as Element | null,
+                dragSession.kind,
+              );
               if (!target || target.tablePos !== dragSession.tablePos) {
                 clearIndicator();
                 return false;
@@ -333,7 +426,11 @@ export const TableDrag = Extension.create({
               event.preventDefault();
               const session = dragSession;
               dragSession = null;
-              const target = locateTarget(view, event, session.kind);
+              const target = locateTarget(
+                view,
+                event.target as Element | null,
+                session.kind,
+              );
               clearIndicator();
               if (
                 target &&
