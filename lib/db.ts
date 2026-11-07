@@ -826,11 +826,18 @@ function mapApiKeyRow(row: ApiKeyRow): ApiKey {
 /**
  * Insert a todo created through the external API. Server-generated id and
  * ms-epoch timestamps; synced_at defaults to now(), so every device merges
- * the row on its next pull. Same defaults as a client-side createTodo.
+ * the row on its next pull. priority/completed come validated from the
+ * route; completed stamps completed_at with the same server clock as
+ * created_at/updated_at. Other fields match a client-side createTodo.
  */
 export async function insertApiTodo(
   userId: string,
-  input: { text: string; date: string | null },
+  input: {
+    text: string;
+    date: string | null;
+    priority: "high" | "low" | null;
+    completed: boolean;
+  },
 ): Promise<TodoRecord> {
   const now = Date.now();
   const { data, error } = await admin()
@@ -839,12 +846,12 @@ export async function insertApiTodo(
       id: randomUUID(),
       user_id: userId,
       text: input.text,
-      completed: false,
-      completed_at: null,
+      completed: input.completed,
+      completed_at: input.completed ? now : null,
       date: input.date,
       blocker_id: null,
       blocker_text: null,
-      priority: null,
+      priority: input.priority,
       sort_order: 0,
       created_at: now,
       updated_at: now,
