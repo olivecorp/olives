@@ -22,7 +22,7 @@
 -- blocker unblocks only when cleared manually (nothing to complete).
 -- priority is a UI tag: 'high' pins the todo above Current's date buckets,
 -- 'low' parks it in the Low priority section, 'external' (the tag every
--- /api/v1/todos add carries) pins above High.
+-- /api/v1/external/todos add carries) pins above High.
 -- ---------------------------------------------------------------------------
 create table if not exists public.todos (
   id           uuid primary key,

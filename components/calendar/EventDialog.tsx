@@ -107,7 +107,7 @@ export function EventDialog({
           <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
             {editing ? "Edit event" : "New event"}
           </h2>
-          {editing && event && event.source !== "manual" && (
+          {editing && event && event.source === "external" && (
             <span className="rounded bg-[var(--color-exempt-soft)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-exempt)]">
               External · added via API
             </span>

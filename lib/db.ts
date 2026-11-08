@@ -824,18 +824,21 @@ function mapApiKeyRow(row: ApiKeyRow): ApiKey {
 }
 
 /**
- * Insert a todo created through the external API. Server-generated id and
+ * Insert a todo created through a todos-add API. Server-generated id and
  * ms-epoch timestamps; synced_at defaults to now(), so every device merges
- * the row on its next pull. Every API todo is tagged priority "external"
- * (the amber category pinned above High in Current) — the caller can't
- * choose one. completed stamps completed_at with the same server clock as
- * created_at/updated_at. Other fields match a client-side createTodo.
+ * the row on its next pull. priority comes validated from the route — the
+ * internal API (/api/v1/todos) passes the caller's choice, the external
+ * API (/api/v1/external/todos) pins "external" (the amber category pinned
+ * above High in Current). completed stamps completed_at with the same
+ * server clock as created_at/updated_at. Other fields match a client-side
+ * createTodo.
  */
 export async function insertApiTodo(
   userId: string,
   input: {
     text: string;
     date: string | null;
+    priority: "high" | "low" | "external" | null;
     completed: boolean;
   },
 ): Promise<TodoRecord> {
@@ -851,7 +854,7 @@ export async function insertApiTodo(
       date: input.date,
       blocker_id: null,
       blocker_text: null,
-      priority: "external",
+      priority: input.priority,
       sort_order: 0,
       created_at: now,
       updated_at: now,
@@ -864,10 +867,13 @@ export async function insertApiTodo(
 }
 
 /**
- * Insert an event created through the external API (source "api"). When the
- * caller passes an externalId and a row already exists for (user, "api",
- * externalId) — the partial unique index — the insert hits 23505 and the
- * existing row is returned instead, making retries idempotent.
+ * Insert an event created through an events-add API. source is "api"
+ * (internal /api/v1/events — looks like a manual event) or "external"
+ * (/api/v1/external/events — the amber EXTERNAL treatment on the
+ * calendar). When the caller passes an externalId and a row already exists
+ * for (user, source, externalId) — the partial unique index — the insert
+ * hits 23505 and the existing row is returned instead, making retries
+ * idempotent (dedup is per source).
  */
 export async function insertApiEvent(
   userId: string,
@@ -880,6 +886,7 @@ export async function insertApiEvent(
     endMin: number | null;
     location: string | null;
     externalId: string | null;
+    source: "api" | "external";
   },
 ): Promise<{ record: EventRecord; existed: boolean }> {
   const now = Date.now();
@@ -895,7 +902,7 @@ export async function insertApiEvent(
       start_min: input.startMin,
       end_min: input.endMin,
       location: input.location,
-      source: "api",
+      source: input.source,
       external_id: input.externalId,
       created_at: now,
       updated_at: now,
@@ -909,7 +916,7 @@ export async function insertApiEvent(
         .from("events")
         .select("*")
         .eq("user_id", userId)
-        .eq("source", "api")
+        .eq("source", input.source)
         .eq("external_id", input.externalId)
         .maybeSingle();
       if (selError) throw selError;

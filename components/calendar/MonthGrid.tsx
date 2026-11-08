@@ -73,8 +73,8 @@ export function MonthGrid({
                   {format(parseISO(iso), "d")}
                 </span>
                 {/* Times only (title on hover) — the day list below carries
-                    the details; green marks it as an event time, amber an
-                    externally-added one. */}
+                    the details; green marks it as an event time, amber one
+                    added via the external API. */}
                 {events.slice(0, 3).map((e) => (
                   <span
                     key={e.id}

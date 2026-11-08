@@ -15,7 +15,7 @@ export interface FeedEntry {
   startMin: number | null;
   /** Todos only. */
   completed?: boolean;
-  /** Events only: added from outside the app (the external API today). */
+  /** Events only: added via the external API (/api/v1/external/events). */
   external?: boolean;
 }
 
@@ -53,7 +53,7 @@ export function buildDayFeed(dateISO: string, data: UnifiedData): FeedEntry[] {
       time: e.allDay ? null : minutesLabel(e.startMin),
       allDay: e.allDay,
       startMin: e.allDay ? null : (e.startMin ?? null),
-      external: e.source !== "manual",
+      external: e.source === "external",
     });
   }
   for (const t of data.todos) {

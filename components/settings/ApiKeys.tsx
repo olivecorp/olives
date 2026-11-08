@@ -5,9 +5,12 @@ import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
 import type { ApiKey } from "@/lib/types";
 
 /**
- * Manage external API keys — the Bearer tokens that let other people and
- * scripts add todos and events to this account via POST /api/v1/*. A key
- * can only create items; it can never read, change, or delete anything.
+ * Manage API keys — the Bearer tokens that let other people and scripts add
+ * todos and events to this account via POST /api/v1/*. A key can only
+ * create items; it can never read, change, or delete anything. Two surfaces
+ * share these keys: /api/v1/todos and /api/v1/events add items as usual,
+ * while /api/v1/external/todos and /api/v1/external/events tag everything
+ * EXTERNAL (amber, pinned above High) — the ones to hand to other people.
  * The full secret is shown exactly once, at creation (the server keeps only
  * a sha256 hash); revoke instantly kills a leaked one.
  */
@@ -106,7 +109,7 @@ export function ApiKeys() {
   // window.location is safe here.
   const curl = newSecret
     ? [
-        `curl -X POST ${window.location.origin}/api/v1/todos \\`,
+        `curl -X POST ${window.location.origin}/api/v1/external/todos \\`,
         `  -H "Authorization: Bearer ${newSecret}" \\`,
         `  -H "Content-Type: application/json" \\`,
         `  -d '{"text":"Added via the API"}'`,
@@ -115,11 +118,13 @@ export function ApiKeys() {
 
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm">
-      <h2 className="text-base font-semibold">External API</h2>
+      <h2 className="text-base font-semibold">API keys</h2>
       <p className="mb-3 text-sm text-[var(--muted)]">
         Let scripts and friends add todos and events to your account with an
         API key. Keys can add items only — they can never read, change, or
-        delete anything.
+        delete anything. /api/v1/todos and /api/v1/events add items as
+        usual; /api/v1/external/todos and /api/v1/external/events tag them
+        EXTERNAL (amber, pinned above High) — hand those to other people.
       </p>
 
       <form
