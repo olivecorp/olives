@@ -29,8 +29,9 @@ export type ListView = "current" | "dated" | "blocked" | "low";
 /**
  * The four tab views. Every rendered list is one section:
  *  - Current: the working set — unblocked todos that are undated, past due,
- *    or due within a week, bucketed High priority (pinned above everything)
- *    / Overdue / Today / Tomorrow / Next 7 days / No date.
+ *    or due within a week, bucketed External (API-added, pinned above
+ *    everything) / High priority / Overdue / Today / Tomorrow / Next 7
+ *    days / No date.
  *  - Dated: everything dated today or later (past-due is Current-only, in
  *    its Overdue bucket).
  *  - Blocked: everything locked by a live blocker.
@@ -74,13 +75,21 @@ export function TodoList({
 
   const open = todos.filter((t) => !t.completed && inView(t));
   const done = todos.filter((t) => t.completed && inView(t));
-  // High is pinned in its own bucket; low is out of this view entirely, so
-  // everything else keeps the date buckets.
-  const plain = open.filter((t) => t.priority !== "high");
+  // External and High are pinned in their own buckets (external above
+  // high); low is out of this view entirely, so everything else keeps the
+  // date buckets.
+  const plain = open.filter(
+    (t) => t.priority !== "high" && t.priority !== "external",
+  );
 
   const sections: { key: string; label: string | null; items: TodoRecord[] }[] = (
     variant === "current"
       ? [
+          {
+            key: "external",
+            label: "External",
+            items: open.filter((t) => t.priority === "external"),
+          },
           {
             key: "high",
             label: "High priority",

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { CalendarDays, CheckSquare, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { FeedEntry } from "@/lib/local/unified";
+import { feedTitle, type FeedEntry } from "@/lib/local/unified";
 
 const KIND_ICON = {
   event: CalendarDays,
@@ -67,7 +67,9 @@ export function AgendaList({
                         "h-4 w-4 shrink-0",
                         f.kind === "todo" && f.completed
                           ? "text-[var(--color-check)]"
-                          : "text-[var(--muted)]",
+                          : f.external
+                            ? "text-[var(--color-exempt)]"
+                            : "text-[var(--muted)]",
                       )}
                     />
                     <span
@@ -76,9 +78,10 @@ export function AgendaList({
                         f.kind === "todo" && f.completed
                           ? "text-[var(--muted)] line-through"
                           : "",
+                        f.external && "font-medium text-[var(--color-exempt)]",
                       )}
                     >
-                      {f.title}
+                      {feedTitle(f)}
                     </span>
                     <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">
                       {f.time ?? (f.allDay ? "all day" : "")}

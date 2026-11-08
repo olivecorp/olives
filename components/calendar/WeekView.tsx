@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { EventRecord } from "@/lib/local/types";
-import type { FeedEntry } from "@/lib/local/unified";
+import { feedTitle, type FeedEntry } from "@/lib/local/unified";
 
 const HOUR_H = 48; // px per hour row — 24h totals 1152px, scrolled container
 
@@ -103,12 +103,14 @@ export function WeekView({
                         className={cn(
                           "truncate rounded px-1 text-[0.68rem] leading-4",
                           f.kind === "event"
-                            ? "bg-[var(--color-check-soft)] text-[var(--color-check)]"
+                            ? f.external
+                              ? "bg-[var(--color-exempt-soft)] font-medium text-[var(--color-exempt)]"
+                              : "bg-[var(--color-check-soft)] text-[var(--color-check)]"
                             : "text-[var(--muted)]",
                         )}
-                        title={f.title}
+                        title={feedTitle(f)}
                       >
-                        {f.title}
+                        {feedTitle(f)}
                       </span>
                     ))}
                     {allday.length > 2 && (
@@ -173,15 +175,27 @@ export function WeekView({
                           e.stopPropagation();
                           onEventClick(ev.id);
                         }}
-                        className="absolute inset-x-0.5 overflow-hidden rounded border border-[var(--color-check)] bg-[var(--color-check-soft)] px-1 py-0.5 text-left text-[0.68rem] leading-4"
+                        className={cn(
+                          "absolute inset-x-0.5 overflow-hidden rounded border px-1 py-0.5 text-left text-[0.68rem] leading-4",
+                          f.external
+                            ? "border-[var(--color-exempt)] bg-[var(--color-exempt-soft)]"
+                            : "border-[var(--color-check)] bg-[var(--color-check-soft)]",
+                        )}
                         style={{
                           top: `${(start / 1440) * 100}%`,
                           height: `calc(${(dur / 1440) * 100}% - 2px)`,
                           minHeight: 18,
                         }}
                       >
-                        <span className="block truncate font-semibold text-[var(--color-check)]">
-                          {ev.title || "(untitled)"}
+                        <span
+                          className={cn(
+                            "block truncate font-semibold",
+                            f.external
+                              ? "text-[var(--color-exempt)]"
+                              : "text-[var(--color-check)]",
+                          )}
+                        >
+                          {feedTitle(f)}
                         </span>
                         <span className="block truncate text-[var(--muted)]">
                           {f.time}

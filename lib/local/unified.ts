@@ -15,6 +15,14 @@ export interface FeedEntry {
   startMin: number | null;
   /** Todos only. */
   completed?: boolean;
+  /** Events only: added from outside the app (the external API today). */
+  external?: boolean;
+}
+
+/** Display title — external events carry an "EXTERNAL: " prefix (after the
+ *  time, wherever one shows) so their provenance is visible at a glance. */
+export function feedTitle(f: FeedEntry): string {
+  return f.external ? `EXTERNAL: ${f.title}` : f.title;
 }
 
 export interface UnifiedData {
@@ -45,6 +53,7 @@ export function buildDayFeed(dateISO: string, data: UnifiedData): FeedEntry[] {
       time: e.allDay ? null : minutesLabel(e.startMin),
       allDay: e.allDay,
       startMin: e.allDay ? null : (e.startMin ?? null),
+      external: e.source !== "manual",
     });
   }
   for (const t of data.todos) {

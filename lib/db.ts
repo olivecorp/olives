@@ -826,8 +826,9 @@ function mapApiKeyRow(row: ApiKeyRow): ApiKey {
 /**
  * Insert a todo created through the external API. Server-generated id and
  * ms-epoch timestamps; synced_at defaults to now(), so every device merges
- * the row on its next pull. priority/completed come validated from the
- * route; completed stamps completed_at with the same server clock as
+ * the row on its next pull. Every API todo is tagged priority "external"
+ * (the amber category pinned above High in Current) — the caller can't
+ * choose one. completed stamps completed_at with the same server clock as
  * created_at/updated_at. Other fields match a client-side createTodo.
  */
 export async function insertApiTodo(
@@ -835,7 +836,6 @@ export async function insertApiTodo(
   input: {
     text: string;
     date: string | null;
-    priority: "high" | "low" | null;
     completed: boolean;
   },
 ): Promise<TodoRecord> {
@@ -851,7 +851,7 @@ export async function insertApiTodo(
       date: input.date,
       blocker_id: null,
       blocker_text: null,
-      priority: input.priority,
+      priority: "external",
       sort_order: 0,
       created_at: now,
       updated_at: now,
@@ -927,7 +927,7 @@ export async function insertApiEvent(
 interface TodoRow {
   id: string; user_id: string; text: string; completed: boolean;
   completed_at: number | null; date: string | null; blocker_id: string | null;
-  blocker_text: string | null; priority: "high" | "low" | null;
+  blocker_text: string | null; priority: "high" | "low" | "external" | null;
   sort_order: number; created_at: number; updated_at: number; deleted: boolean;
 }
 interface EventRow {

@@ -103,9 +103,16 @@ export function EventDialog({
         className="w-[min(28rem,94vw)] rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-          {editing ? "Edit event" : "New event"}
-        </h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+            {editing ? "Edit event" : "New event"}
+          </h2>
+          {editing && event && event.source !== "manual" && (
+            <span className="rounded bg-[var(--color-exempt-soft)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-exempt)]">
+              External · added via API
+            </span>
+          )}
+        </div>
         <div className="flex flex-col gap-2">
           <input
             value={title}

@@ -65,6 +65,11 @@ export function TodoItemContent({
             todo.completed && "opacity-50",
           )}
         >
+          {todo.priority === "external" && (
+            <span className="rounded bg-[var(--color-exempt-soft)] px-1.5 py-0.5 font-medium text-[var(--color-exempt)]">
+              External
+            </span>
+          )}
           {todo.priority === "high" && (
             <span className="rounded bg-[var(--color-nocheck-soft)] px-1.5 py-0.5 font-medium text-[var(--color-nocheck)]">
               High

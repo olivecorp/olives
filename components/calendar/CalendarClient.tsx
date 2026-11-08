@@ -14,7 +14,7 @@ import {
   useStorageAvailable,
   useTodos,
 } from "@/lib/local/hooks";
-import { buildDayFeed, buildRangeFeeds } from "@/lib/local/unified";
+import { buildDayFeed, buildRangeFeeds, feedTitle } from "@/lib/local/unified";
 import { readPref, writePref } from "@/lib/prefs";
 import { MonthGrid } from "./MonthGrid";
 import { WeekView } from "./WeekView";
@@ -274,15 +274,25 @@ function DayDetail({
               key={`${f.kind}:${f.id}`}
               className="flex items-center gap-2 text-sm"
             >
-              <span className="w-14 shrink-0 text-xs tabular-nums text-[var(--muted)]">
+              <span
+                className={cn(
+                  "w-14 shrink-0 text-xs tabular-nums text-[var(--muted)]",
+                  f.kind === "event" &&
+                    f.external &&
+                    "font-semibold text-[var(--color-exempt)]",
+                )}
+              >
                 {f.time ?? "all day"}
               </span>
               {f.kind === "event" ? (
                 <button
-                  className="min-w-0 flex-1 truncate text-left hover:underline"
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-left hover:underline",
+                    f.external && "font-medium text-[var(--color-exempt)]",
+                  )}
                   onClick={() => onEventClick(f.id)}
                 >
-                  {f.title}
+                  {feedTitle(f)}
                 </button>
               ) : (
                 <Link

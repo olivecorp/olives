@@ -109,7 +109,7 @@ export function ApiKeys() {
         `curl -X POST ${window.location.origin}/api/v1/todos \\`,
         `  -H "Authorization: Bearer ${newSecret}" \\`,
         `  -H "Content-Type: application/json" \\`,
-        `  -d '{"text":"Added via the API","priority":"high"}'`,
+        `  -d '{"text":"Added via the API"}'`,
       ].join("\n")
     : "";
 

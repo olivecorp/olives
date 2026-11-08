@@ -3,7 +3,7 @@
 import { format, parseISO } from "date-fns";
 import { CheckSquare, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { FeedEntry } from "@/lib/local/unified";
+import { feedTitle, type FeedEntry } from "@/lib/local/unified";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -73,12 +73,18 @@ export function MonthGrid({
                   {format(parseISO(iso), "d")}
                 </span>
                 {/* Times only (title on hover) — the day list below carries
-                    the details; green marks it as an event time. */}
+                    the details; green marks it as an event time, amber an
+                    externally-added one. */}
                 {events.slice(0, 3).map((e) => (
                   <span
                     key={e.id}
-                    title={e.title}
-                    className="truncate text-[0.6rem] font-semibold leading-[0.95rem] text-[var(--color-check)] sm:text-[0.65rem] sm:leading-4"
+                    title={feedTitle(e)}
+                    className={cn(
+                      "truncate text-[0.6rem] font-semibold leading-[0.95rem] sm:text-[0.65rem] sm:leading-4",
+                      e.external
+                        ? "text-[var(--color-exempt)]"
+                        : "text-[var(--color-check)]",
+                    )}
                   >
                     {e.time ?? "all day"}
                   </span>

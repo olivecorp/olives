@@ -54,7 +54,7 @@ export async function createTodo(
     date?: string | null;
     blockerId?: string | null;
     blockerText?: string | null;
-    priority?: "high" | "low" | null;
+    priority?: "high" | "low" | "external" | null;
   },
 ): Promise<string> {
   const db = getDb();
@@ -290,6 +290,12 @@ export async function duplicateEvent(id: string): Promise<string | null> {
     ...src,
     id: newId_,
     date: `${yyyy}-${mm}-${dd}`,
+    // The duplicate is a user-made event — reset the importer fields. A copy
+    // that kept them would collide with the original on
+    // events_source_external_idx (same user, source, external id) and fail
+    // the entire sync push with a unique violation.
+    source: "manual",
+    externalId: null,
     createdAt: now,
     updatedAt: now,
     deleted: false,

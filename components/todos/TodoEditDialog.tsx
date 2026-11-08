@@ -15,6 +15,7 @@ import { BlockerPicker, type BlockerSelection } from "./BlockerPicker";
 const PRIORITIES = [
   { value: null, label: "None" },
   { value: "high", label: "High" },
+  { value: "external", label: "External" },
   { value: "low", label: "Low" },
 ] as const;
 
@@ -22,7 +23,7 @@ const PRIORITIES = [
  *  there's no row to write through to until close()). */
 interface Draft {
   date: string;
-  priority: "high" | "low" | null;
+  priority: "high" | "low" | "external" | null;
   blockerId: string | null;
   blockerText: string | null;
 }
@@ -111,7 +112,7 @@ export function TodoEditDialog({
     else setDraft((d) => ({ ...d, date: next }));
   }
 
-  function setPriority(next: "high" | "low" | null) {
+  function setPriority(next: "high" | "low" | "external" | null) {
     if (todo) void updateTodo(todo.id, { priority: next });
     else setDraft((d) => ({ ...d, priority: next }));
   }
@@ -246,7 +247,9 @@ export function TodoEditDialog({
                       active
                         ? p.value === "high"
                           ? "bg-[var(--color-nocheck-soft)] font-semibold text-[var(--color-nocheck)]"
-                          : "bg-black/5 font-semibold"
+                          : p.value === "external"
+                            ? "bg-[var(--color-exempt-soft)] font-semibold text-[var(--color-exempt)]"
+                            : "bg-black/5 font-semibold"
                         : "text-[var(--muted)] hover:bg-black/5",
                     )}
                   >

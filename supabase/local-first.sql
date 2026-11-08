@@ -21,7 +21,8 @@
 -- ("waiting on the visa"). Exactly one of the two is ever set; a text
 -- blocker unblocks only when cleared manually (nothing to complete).
 -- priority is a UI tag: 'high' pins the todo above Current's date buckets,
--- 'low' parks it in the Low priority section.
+-- 'low' parks it in the Low priority section, 'external' (the tag every
+-- /api/v1/todos add carries) pins above High.
 -- ---------------------------------------------------------------------------
 create table if not exists public.todos (
   id           uuid primary key,
@@ -32,7 +33,7 @@ create table if not exists public.todos (
   date         date,
   blocker_id   uuid,
   blocker_text text,
-  priority     text,                          -- 'high' | 'low' | null
+  priority     text,                          -- 'high' | 'low' | 'external' | null
   sort_order   double precision not null default 0,
   created_at   bigint not null,
   updated_at   bigint not null,
@@ -166,7 +167,7 @@ begin
             nullif(r->>'date','')::date,
             nullif(r->>'blockerId','')::uuid,
             nullif(r->>'blockerText',''),
-            case when r->>'priority' in ('high','low') then r->>'priority' end,
+            case when r->>'priority' in ('high','low','external') then r->>'priority' end,
             coalesce((r->>'sortOrder')::double precision, 0),
             (r->>'createdAt')::bigint, (r->>'updatedAt')::bigint,
             coalesce((r->>'deleted')::boolean, false))
