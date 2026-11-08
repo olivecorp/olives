@@ -79,3 +79,25 @@ export async function sendToUser(
   );
   return sent;
 }
+
+/** Push fired when an external API key (/api/v1/external/*) adds something —
+ *  the owner asked to know the moment an item from outside lands, so this is
+ *  the phone-side half of the EXTERNAL treatment. The body is clipped (API
+ *  text may run to 2000 chars; notification drawers can't) and the tag is
+ *  per-item so simultaneous adds stack instead of replacing each other.
+ *  Callers .catch() it: a push outage must never fail the add itself. */
+export async function notifyExternalAdd(
+  userId: string,
+  opts: { isTodo: boolean; body: string; tag: string; url: string },
+): Promise<number> {
+  const body =
+    opts.body.length > 140 ? `${opts.body.slice(0, 139)}…` : opts.body;
+  return sendToUser(
+    userId,
+    {
+      title: opts.isTodo ? "External todo added" : "External event added",
+      body,
+    },
+    { tag: opts.tag, url: opts.url },
+  );
+}

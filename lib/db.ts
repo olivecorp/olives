@@ -736,18 +736,31 @@ function mapEventRow(row: EventRow): EventRecord {
   };
 }
 
-/** Resolve an API key hash to its owner. Active (non-revoked) keys only. */
-export async function getUserIdForApiKey(
+/** Resolve an API key hash to its owner, plus the scope (surface gating in
+ *  requireApiKey) and name (push attribution on external adds). Active
+ *  (non-revoked) keys only. */
+export async function getApiKeyPrincipal(
   keyHash: string,
-): Promise<{ userId: string; keyId: string } | null> {
+): Promise<{
+  userId: string;
+  keyId: string;
+  keyName: string;
+  scope: "internal" | "external";
+} | null> {
   const { data, error } = await admin()
     .from("api_keys")
-    .select("id, user_id")
+    .select("id, user_id, name, scope")
     .eq("key_hash", keyHash)
     .is("revoked_at", null)
     .maybeSingle();
   if (error) throw error;
-  return data ? { userId: data.user_id, keyId: data.id } : null;
+  if (!data) return null;
+  return {
+    userId: data.user_id,
+    keyId: data.id,
+    keyName: data.name,
+    scope: data.scope === "external" ? "external" : "internal",
+  };
 }
 
 /** Stamp last_used_at (best-effort; callers swallow failures). */
@@ -761,7 +774,12 @@ export async function touchApiKey(keyId: string): Promise<void> {
 
 export async function createApiKey(
   userId: string,
-  input: { name: string; keyHash: string; keyPrefix: string },
+  input: {
+    name: string;
+    keyHash: string;
+    keyPrefix: string;
+    scope: "internal" | "external";
+  },
 ): Promise<ApiKey> {
   const { data, error } = await admin()
     .from("api_keys")
@@ -770,8 +788,9 @@ export async function createApiKey(
       name: input.name,
       key_hash: input.keyHash,
       key_prefix: input.keyPrefix,
+      scope: input.scope,
     })
-    .select("id, name, key_prefix, created_at, last_used_at, revoked_at")
+    .select("id, name, scope, key_prefix, created_at, last_used_at, revoked_at")
     .single();
   if (error) throw error;
   return mapApiKeyRow(data as ApiKeyRow);
@@ -780,7 +799,7 @@ export async function createApiKey(
 export async function listApiKeys(userId: string): Promise<ApiKey[]> {
   const { data, error } = await admin()
     .from("api_keys")
-    .select("id, name, key_prefix, created_at, last_used_at, revoked_at")
+    .select("id, name, scope, key_prefix, created_at, last_used_at, revoked_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -806,6 +825,7 @@ export async function revokeApiKey(
 interface ApiKeyRow {
   id: string;
   name: string;
+  scope: string;
   key_prefix: string;
   created_at: string;
   last_used_at: string | null;
@@ -816,6 +836,7 @@ function mapApiKeyRow(row: ApiKeyRow): ApiKey {
   return {
     id: row.id,
     name: row.name,
+    scope: row.scope === "external" ? "external" : "internal",
     keyPrefix: row.key_prefix,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,

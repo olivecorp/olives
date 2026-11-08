@@ -21,6 +21,9 @@ import { insertApiTodo, touchApiKey } from "@/lib/db";
  * lands in Supabase with synced_at = now(), so every device of the owner
  * merges it on the next pull (≤15s while the app is visible). Unknown fields
  * are ignored; responses carry CORS headers so browser-based callers work too.
+ *
+ * Internal keys only — an external-scoped key gets a 403 here (and vice
+ * versa on /api/v1/external/todos).
  */
 export const runtime = "nodejs";
 
@@ -30,15 +33,8 @@ export function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    const key = await requireApiKey(req);
-    if (!key) {
-      return withV1Cors(
-        NextResponse.json(
-          { error: "Invalid or missing API key." },
-          { status: 401 },
-        ),
-      );
-    }
+    const key = await requireApiKey(req, "internal");
+    if (key instanceof NextResponse) return withV1Cors(key);
 
     const body = (await req.json().catch(() => null)) as Record<
       string,

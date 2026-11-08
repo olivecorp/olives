@@ -1,8 +1,10 @@
+import { format, parseISO } from "date-fns";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireApiKey, withV1Cors } from "@/lib/api-auth";
 import { jsonError } from "@/lib/api-helpers";
 import { parseEvent } from "@/lib/api-events";
 import { insertApiEvent, touchApiKey } from "@/lib/db";
+import { notifyExternalAdd } from "@/lib/push";
 
 /**
  * External write-only API: add an EXTERNAL-tagged calendar event to the key
@@ -19,7 +21,12 @@ import { insertApiEvent, touchApiKey } from "@/lib/db";
  * Same fields and validation as /api/v1/events (start/end "HH:MM", all-day
  * when start is omitted or allDay:true, single-day, end after start).
  * externalId dedup applies per source, so ids only collide with other
- * external adds. The row syncs to the owner's devices on their next pull.
+ * external adds. Every NEW add fires a push notification to the owner's
+ * devices (a dedup hit adds nothing, so it stays silent). The row syncs to
+ * the owner's devices on their next pull.
+ *
+ * External keys only — an internal-scoped key gets a 403 here (and vice
+ * versa on /api/v1/events).
  */
 export const runtime = "nodejs";
 
@@ -29,15 +36,8 @@ export function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    const key = await requireApiKey(req);
-    if (!key) {
-      return withV1Cors(
-        NextResponse.json(
-          { error: "Invalid or missing API key." },
-          { status: 401 },
-        ),
-      );
-    }
+    const key = await requireApiKey(req, "external");
+    if (key instanceof NextResponse) return withV1Cors(key);
 
     const body = (await req.json().catch(() => null)) as Record<
       string,
@@ -65,6 +65,23 @@ export async function POST(req: NextRequest) {
       // the write (and never fires after the response, which Vercel freezes).
       touchApiKey(key.keyId).catch(() => null),
     ]);
+    // Push the owner's phone about the new event — but only when it's new: a
+    // dedup hit added nothing, so it must not re-buzz. Awaited (Vercel
+    // freezes the function at response time) and best-effort, same as the
+    // todos twin.
+    if (!result.existed) {
+      const m = result.record.startMin;
+      const time =
+        m === null
+          ? ""
+          : ` ${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      await notifyExternalAdd(key.userId, {
+        isTodo: false,
+        body: `${result.record.title} — ${format(parseISO(result.record.date), "d MMM")}${time} — via ${key.keyName}`,
+        tag: `external-event-${result.record.id}`,
+        url: "/calendar",
+      }).catch(() => null);
+    }
     // existed = the externalId dedup hit an already-imported row.
     return withV1Cors(
       NextResponse.json(

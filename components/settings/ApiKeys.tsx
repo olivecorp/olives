@@ -7,19 +7,23 @@ import type { ApiKey } from "@/lib/types";
 /**
  * Manage API keys — the Bearer tokens that let other people and scripts add
  * todos and events to this account via POST /api/v1/*. A key can only
- * create items; it can never read, change, or delete anything. Two surfaces
- * share these keys: /api/v1/todos and /api/v1/events add items as usual,
- * while /api/v1/external/todos and /api/v1/external/events tag everything
- * EXTERNAL (amber, pinned above High) — the ones to hand to other people.
- * The full secret is shown exactly once, at creation (the server keeps only
- * a sha256 hash); revoke instantly kills a leaked one.
+ * create items; it can never read, change, or delete anything. Each key is
+ * scoped to one surface at creation: EXTERNAL keys may only call
+ * /api/v1/external/* (items tagged EXTERNAL, amber, pinned above High, plus
+ * a push notification — the ones to hand to other people); INTERNAL keys
+ * may only call /api/v1/todos and /api/v1/events (items land as usual — for
+ * your own automations). The full secret is shown exactly once, at creation
+ * (the server keeps only a sha256 hash); revoke instantly kills a leaked
+ * one.
  */
 export function ApiKeys() {
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
   const [name, setName] = useState("");
+  const [scope, setScope] = useState<"external" | "internal">("external");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newSecret, setNewSecret] = useState<string | null>(null);
+  const [newScope, setNewScope] = useState<"external" | "internal">("external");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -44,7 +48,7 @@ export function ApiKeys() {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: label }),
+        body: JSON.stringify({ name: label, scope }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         key?: ApiKey;
@@ -57,6 +61,7 @@ export function ApiKeys() {
       }
       setKeys((cur) => [data.key!, ...(cur ?? [])]);
       setNewSecret(data.secret);
+      setNewScope(data.key.scope);
       setName("");
     } catch {
       setMessage("Couldn't create the key.");
@@ -106,10 +111,11 @@ export function ApiKeys() {
     iso ? new Date(iso).toLocaleDateString() : "never";
 
   // Only rendered once a key was just created (client-side), so
-  // window.location is safe here.
+  // window.location is safe here. The example targets the surface the new
+  // key is actually allowed to call.
   const curl = newSecret
     ? [
-        `curl -X POST ${window.location.origin}/api/v1/external/todos \\`,
+        `curl -X POST ${window.location.origin}/api/v1/${newScope === "internal" ? "" : "external/"}todos \\`,
         `  -H "Authorization: Bearer ${newSecret}" \\`,
         `  -H "Content-Type: application/json" \\`,
         `  -d '{"text":"Added via the API"}'`,
@@ -122,9 +128,12 @@ export function ApiKeys() {
       <p className="mb-3 text-sm text-[var(--muted)]">
         Let scripts and friends add todos and events to your account with an
         API key. Keys can add items only — they can never read, change, or
-        delete anything. /api/v1/todos and /api/v1/events add items as
-        usual; /api/v1/external/todos and /api/v1/external/events tag them
-        EXTERNAL (amber, pinned above High) — hand those to other people.
+        delete anything. Each key works on one surface only:{" "}
+        <strong>external</strong> keys call /api/v1/external/* — items arrive
+        tagged EXTERNAL (amber, pinned above High) and you get a push
+        notification; <strong>internal</strong> keys call /api/v1/todos and
+        /api/v1/events — items land as if you added them yourself. Keys from
+        before the split are internal.
       </p>
 
       <form
@@ -141,6 +150,18 @@ export function ApiKeys() {
           maxLength={100}
           className="h-9 min-w-[10rem] flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm outline-none focus:border-[var(--color-check)]"
         />
+        <select
+          value={scope}
+          onChange={(e) =>
+            setScope(e.target.value as "external" | "internal")
+          }
+          aria-label="Key scope"
+          title="Where this key works"
+          className="h-9 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-sm outline-none focus:border-[var(--color-check)]"
+        >
+          <option value="external">External</option>
+          <option value="internal">Internal</option>
+        </select>
         <button
           type="submit"
           disabled={busy || !name.trim()}
@@ -185,6 +206,20 @@ export function ApiKeys() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium">{k.name}</span>
+                <span
+                  className={
+                    k.scope === "external"
+                      ? "rounded bg-[var(--color-exempt-soft)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-exempt)]"
+                      : "rounded bg-black/5 px-1.5 py-0.5 text-xs font-medium text-[var(--muted)]"
+                  }
+                  title={
+                    k.scope === "external"
+                      ? "Works only on /api/v1/external/*"
+                      : "Works only on /api/v1/todos and /api/v1/events"
+                  }
+                >
+                  {k.scope === "external" ? "External" : "Internal"}
+                </span>
                 <span className="font-mono text-xs text-[var(--muted)]">
                   {k.keyPrefix}…
                 </span>

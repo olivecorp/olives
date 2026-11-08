@@ -5,10 +5,11 @@ import { jsonError } from "@/lib/api-helpers";
 import { createApiKey, listApiKeys } from "@/lib/db";
 
 /**
- * Manage the account's external API keys (used by POST /api/v1/todos and
- * /api/v1/events). Session-gated like every other /api route. The full
- * secret is returned exactly once, at creation — afterwards only its sha256
- * hash exists server-side.
+ * Manage the account's API keys (used by the /api/v1/* add surfaces).
+ * Session-gated like every other /api route. A key is scoped at creation:
+ * internal keys may only call /api/v1/todos + /api/v1/events, external keys
+ * only /api/v1/external/*. The full secret is returned exactly once, at
+ * creation — afterwards only its sha256 hash exists server-side.
  */
 
 const MAX_ACTIVE_KEYS = 20;
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
   }
   const body = (await req.json().catch(() => null)) as {
     name?: unknown;
+    scope?: unknown;
   } | null;
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   if (!name || name.length > 100) {
@@ -39,6 +41,18 @@ export async function POST(req: NextRequest) {
       { error: "name is required (1–100 characters)." },
       { status: 400 },
     );
+  }
+  // Default external — the hand-to-other-people surface is the reason keys
+  // exist; the owner picks internal for their own automations.
+  let scope: "internal" | "external" = "external";
+  if (body?.scope != null) {
+    if (body.scope !== "internal" && body.scope !== "external") {
+      return NextResponse.json(
+        { error: 'scope must be "internal" or "external".' },
+        { status: 400 },
+      );
+    }
+    scope = body.scope;
   }
   try {
     const active = (await listApiKeys(user.userId)).filter(
@@ -55,6 +69,7 @@ export async function POST(req: NextRequest) {
       name,
       keyHash: hash,
       keyPrefix: prefix,
+      scope,
     });
     return NextResponse.json({ key, secret }, { status: 201 });
   } catch (e) {

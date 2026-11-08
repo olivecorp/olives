@@ -58,10 +58,13 @@ export interface PushSubscriptionRow {
   auth: string;
 }
 
-/** One external-API key (api_keys row). The secret itself is never stored. */
+/** One API key (api_keys row). The secret itself is never stored. */
 export interface ApiKey {
   id: string;
   name: string;
+  /** Which surface the key may call: internal (/api/v1/todos + /api/v1/events,
+   *  items land as usual) or external (/api/v1/external/*, EXTERNAL-tagged). */
+  scope: "internal" | "external";
   keyPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;

@@ -20,6 +20,9 @@ import { insertApiEvent, touchApiKey } from "@/lib/db";
  * id again returns the existing event (200) instead of duplicating it (201).
  * Events are single-day; end must be after start. The row syncs to the
  * owner's devices on their next pull.
+ *
+ * Internal keys only — an external-scoped key gets a 403 here (and vice
+ * versa on /api/v1/external/events).
  */
 export const runtime = "nodejs";
 
@@ -29,15 +32,8 @@ export function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    const key = await requireApiKey(req);
-    if (!key) {
-      return withV1Cors(
-        NextResponse.json(
-          { error: "Invalid or missing API key." },
-          { status: 401 },
-        ),
-      );
-    }
+    const key = await requireApiKey(req, "internal");
+    if (key instanceof NextResponse) return withV1Cors(key);
 
     const body = (await req.json().catch(() => null)) as Record<
       string,
