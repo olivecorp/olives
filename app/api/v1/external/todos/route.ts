@@ -67,14 +67,15 @@ export async function POST(req: NextRequest) {
     ]);
     // External adds push to the owner's phone — that's the point of the
     // surface. Awaited (Vercel freezes the function at response time, so an
-    // unawaited send would be dropped) but best-effort: a push outage never
-    // fails the add itself.
+    // unawaited send would be dropped). notifyExternalAdd never throws and
+    // logs its own failures: a push outage never fails the add, but it
+    // leaves a trace in the function logs.
     await notifyExternalAdd(key.userId, {
       isTodo: true,
       body: `${todo.text} — via ${key.keyName}`,
       tag: `external-todo-${todo.id}`,
       url: "/todos",
-    }).catch(() => null);
+    });
     return withV1Cors(NextResponse.json({ todo }, { status: 201 }));
   } catch (e) {
     return withV1Cors(jsonError(e));

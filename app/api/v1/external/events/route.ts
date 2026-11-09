@@ -67,8 +67,8 @@ export async function POST(req: NextRequest) {
     ]);
     // Push the owner's phone about the new event — but only when it's new: a
     // dedup hit added nothing, so it must not re-buzz. Awaited (Vercel
-    // freezes the function at response time) and best-effort, same as the
-    // todos twin.
+    // freezes the function at response time); notifyExternalAdd never throws
+    // and logs its own failures, same as the todos twin.
     if (!result.existed) {
       const m = result.record.startMin;
       const time =
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
         body: `${result.record.title} — ${format(parseISO(result.record.date), "d MMM")}${time} — via ${key.keyName}`,
         tag: `external-event-${result.record.id}`,
         url: "/calendar",
-      }).catch(() => null);
+      });
     }
     // existed = the externalId dedup hit an already-imported row.
     return withV1Cors(

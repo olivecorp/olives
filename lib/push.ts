@@ -51,6 +51,12 @@ export async function sendToUser(
 ): Promise<number> {
   ensureVapid();
   const subs = await getPushSubscriptions(userId);
+  if (subs.length === 0) {
+    // The most common "why no notification?" cause, and invisible unless
+    // logged — the account simply has nothing registered to receive.
+    console.warn(`[push] user ${userId} has no subscriptions — nothing sent`);
+    return 0;
+  }
   let sent = 0;
   await Promise.all(
     subs.map(async (s) => {
@@ -71,9 +77,15 @@ export async function sendToUser(
         const status = (e as { statusCode?: number }).statusCode;
         if (status === 404 || status === 410) {
           await deletePushSubscriptionByEndpoint(s.endpoint).catch(() => {});
+        } else {
+          // Transient push-service issues aren't retried, but they are
+          // logged — a fully silent catch made "no notification" reports
+          // undiagnosable after the fact.
+          console.error(
+            `[push] send failed (status ${status ?? "?"}):`,
+            e instanceof Error ? e.message : e,
+          );
         }
-        // Other errors (transient push-service issues) — drop silently; the
-        // slot was claimed so we don't retry-spam.
       }
     }),
   );
@@ -85,19 +97,35 @@ export async function sendToUser(
  *  the phone-side half of the EXTERNAL treatment. The body is clipped (API
  *  text may run to 2000 chars; notification drawers can't) and the tag is
  *  per-item so simultaneous adds stack instead of replacing each other.
- *  Callers .catch() it: a push outage must never fail the add itself. */
+ *  Never throws — a push outage must not fail the add — but it logs (as
+ *  does sendToUser), so a missing buzz is explainable from the Vercel
+ *  function logs instead of not at all. */
 export async function notifyExternalAdd(
   userId: string,
   opts: { isTodo: boolean; body: string; tag: string; url: string },
 ): Promise<number> {
   const body =
     opts.body.length > 140 ? `${opts.body.slice(0, 139)}…` : opts.body;
-  return sendToUser(
-    userId,
-    {
-      title: opts.isTodo ? "External todo added" : "External event added",
-      body,
-    },
-    { tag: opts.tag, url: opts.url },
-  );
+  try {
+    const sent = await sendToUser(
+      userId,
+      {
+        title: opts.isTodo ? "External todo added" : "External event added",
+        body,
+      },
+      { tag: opts.tag, url: opts.url },
+    );
+    if (sent === 0) {
+      console.warn(`[push] external add ${opts.tag} reached 0 devices`);
+    }
+    return sent;
+  } catch (e) {
+    // e.g. VAPID keys missing in this environment. The add itself already
+    // succeeded — log and move on.
+    console.error(
+      `[push] external add ${opts.tag} could not be sent:`,
+      e instanceof Error ? e.message : e,
+    );
+    return 0;
+  }
 }
