@@ -16,7 +16,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { moveColumnBy, moveRowBy } from "./tableDrag";
+import { moveColumnBy, moveRowBy } from "./tableMoves";
 import {
   selectColumn,
   selectRow,

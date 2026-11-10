@@ -172,89 +172,16 @@ textarea {
   cursor: col-resize;
 }
 
-/* Table drag grips (components/notes/tableDrag.ts). The wrapper gets
-   compensating padding+margin so grips can paint outside the table without
-   being clipped by its overflow-x: auto — net layout is unchanged. */
+/* Wide tables scroll inside the editor instead of overflowing the page.
+   (They once also got compensating padding so drag grips could paint
+   outside the table; the grips are gone, so the padding is too.) */
 .prose-note .tableWrapper {
   overflow-x: auto;
-  padding: 1.5em 0 0 1.5em;
-  margin: -1.5em 0 0 -1.5em;
 }
-.prose-note .tbl-grip {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1em;
-  height: 1em;
-  color: var(--muted);
-  opacity: 0;
-  cursor: grab;
-  z-index: 5;
-  transition: opacity 0.12s;
-  /* The touch drag (pointer events, tableDrag.ts) starts on the grip:
-     never let that gesture scroll the page, select text, or pop the iOS
-     long-press callout instead of dragging. */
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-.prose-note .tbl-grip:hover {
-  color: var(--color-check);
-}
-.prose-note .tbl-grip:active {
-  cursor: grabbing;
-}
-/* With a mouse, grips appear on table hover. Touch has no hover (and
-   emulated :hover sticks after a scroll), so grips are always visible
-   there — a touch runs the pointer-event drag path in tableDrag.ts, since
-   HTML5 drag never fires for touch. The column-resize bar stays
-   mouse-only: col-resize has no touch equivalent wired up. */
-@media (hover: hover) {
-  .prose-note table:hover .tbl-grip {
-    opacity: 1;
-  }
-}
+/* Touch has no hover, and the column-resize bar is mouse-only (col-resize
+   has no touch equivalent wired up), so hide it there. */
 @media (hover: none) {
-  .prose-note .tbl-grip {
-    opacity: 0.45;
-    /* A bit larger for fingers; grips are absolutely positioned, so the
-       size change costs no layout. */
-    width: 1.4em;
-    height: 1.4em;
-  }
-  .prose-note .tbl-grip.tbl-grip-active {
-    opacity: 1;
-    color: var(--color-check);
-  }
   .prose-note .column-resize-handle {
     display: none;
   }
-}
-.prose-note .tbl-grip-row {
-  left: -1.35em;
-  top: 50%;
-  transform: translateY(-50%);
-}
-.prose-note .tbl-grip-col {
-  top: -1.35em;
-  left: 50%;
-  transform: translateX(-50%);
-}
-.prose-note .tbl-grip-col svg {
-  transform: rotate(90deg);
-}
-/* Drop-target highlight while dragging a grip (components/notes/tableDrag.ts):
-   a fixed-position overlay on <body> spanning the hovered row/column. It
-   deliberately lives outside the editor DOM — see the indicator comment in
-   tableDrag.ts for why it must not be classes on the table's own cells. */
-.tbl-drop-overlay {
-  position: fixed;
-  display: none;
-  pointer-events: none;
-  outline: 2px solid var(--color-check);
-  outline-offset: -2px;
-  border-radius: 2px;
-  z-index: 40;
 }

@@ -21,7 +21,6 @@ import {
 import type { NoteRecord } from "@/lib/local/types";
 import { EditorToolbar } from "./EditorToolbar";
 import { pasteGrid } from "./pasteGrid";
-import { TableDrag } from "./tableDrag";
 import type { FolderTreeNode } from "./folderTree";
 
 const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] };
@@ -118,7 +117,6 @@ export function NoteEditor({
       TableRow,
       TableCell,
       TableHeader,
-      TableDrag,
     ],
     content: (note.content as object) ?? EMPTY_DOC,
     immediatelyRender: false, // required under Next SSR
